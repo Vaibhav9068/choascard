@@ -26,7 +26,10 @@ const corsOptions = {
     if (NODE_ENV !== 'production') {
       return callback(null, true);
     }
-    if (CLIENT_URL.includes(origin)) {
+    const productionAllowed = [
+      'https://choascard.vercel.app',
+    ];
+    if (productionAllowed.includes(origin) || CLIENT_URL.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));

@@ -13,11 +13,27 @@ import {
 
 axios.defaults.withCredentials = true;
 export const getApiBaseUrl = (): string => {
-  return (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+  if (typeof window !== "undefined") {
+    if (window.location.hostname.includes("choascard.vercel.app")) {
+      return "https://choascard.onrender.com/api";
+    }
+  }
+  let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+  url = url.replace(/\/+$/, "");
+  if (!url.endsWith("/api")) {
+    url += "/api";
+  }
+  return url;
 };
 
 export const getSocketUrl = (): string => {
-  return (process.env.NEXT_PUBLIC_SOCKET_URL || "").replace(/\/+$/, "");
+  if (typeof window !== "undefined") {
+    if (window.location.hostname.includes("choascard.vercel.app")) {
+      return "https://choascard.onrender.com";
+    }
+  }
+  let url = process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5000";
+  return url.replace(/\/+$/, "");
 };
 
 export interface UserProfile {

@@ -5,6 +5,7 @@ import { getSocketUrl } from "./api";
 export const socket: Socket = io(getSocketUrl(), {
   autoConnect: false,
   withCredentials: true,
+  transports: ["websocket"],
 });
 
 export const updateSocketAuth = () => {

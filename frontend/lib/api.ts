@@ -10,6 +10,8 @@ import {
   setAccessToken,
   type AuthTokensResponse,
 } from "./authStore";
+
+axios.defaults.withCredentials = true;
 export const getApiBaseUrl = (): string => {
   return (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
 };

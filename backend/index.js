@@ -43,6 +43,13 @@ app.use(cookieParser());
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 
+app.get("/", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "CHAOS DECK API is running"
+  });
+});
+
 app.use(notFound);
 app.use(errorHandler);
 

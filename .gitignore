@@ -1,0 +1,49 @@
+# Monorepo root — CHAOS DECK
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.code-workspace
+
+# --- Frontend (Next.js) — explicit paths so IDE/git show ignored env files ---
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+frontend/.env*.local
+
+# --- Backend (Express) — secrets never committed ---
+backend/.env
+backend/.env.local
+backend/.env.*.local
+
+# Generic env patterns (any subdirectory)
+.env
+.env.local
+.env.*.local
+
+# Allow only example templates
+!.env.example
+!**/.env.example
+
+# Dependencies
+node_modules/
+
+# Next.js build output
+frontend/.next/
+frontend/out/
+
+# Logs
+*.log
+logs/
+
+# Misc
+*.pem
+tmp/
+temp/

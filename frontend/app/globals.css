@@ -1,0 +1,75 @@
+@import "tailwindcss";
+
+@theme {
+  --color-card-red: #ff3366;
+  --color-card-blue: #3399ff;
+  --color-card-green: #00ff88;
+  --color-card-yellow: #ffcc00;
+  --color-card-wild: #a855f7;
+  --color-card-super: #d946ef;
+  --color-surface: #111115;
+  --color-accent: #fae500;
+  
+  --color-game-bg: #07070a;
+  --color-game-panel: #161622;
+
+  --animate-shine: shine 3s infinite linear;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  
+  @keyframes shine {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-10px) rotate(2deg); }
+  }
+}
+
+:root {
+  --background: #07070a;
+  --foreground: #ededed;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Custom glow classes */
+.glow-accent {
+  box-shadow: 0 0 15px rgba(250, 229, 0, 0.25);
+}
+.glow-accent-lg {
+  box-shadow: 0 0 30px rgba(250, 229, 0, 0.4);
+}
+.glow-red {
+  box-shadow: 0 0 15px rgba(255, 51, 102, 0.25);
+}
+.glow-blue {
+  box-shadow: 0 0 15px rgba(51, 153, 255, 0.25);
+}
+.glow-green {
+  box-shadow: 0 0 15px rgba(0, 255, 136, 0.25);
+}
+
+/* Glassmorphism utility */
+.glass-panel {
+  background: rgba(22, 22, 34, 0.6);
+  backdrop-filter: blur(12px);
+  border: 1px border-solid rgba(255, 255, 255, 0.05);
+}
+
+.glass-input {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px border-solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease-in-out;
+}
+.glass-input:focus {
+  border-color: rgba(250, 229, 0, 0.5);
+  box-shadow: 0 0 10px rgba(250, 229, 0, 0.15);
+  background: rgba(0, 0, 0, 0.6);
+}

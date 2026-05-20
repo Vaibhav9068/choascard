@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Environment (never commit secrets)
+.env
+.env.local
+.env.*
+!.env.example
+
+# Next.js
+.next/
+out/
+
+# Logs
+*.log
+logs/
+
+# Build / cache
+build/
+dist/
+.turbo/
+.cache/
+
+# Testing
+coverage/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Misc
+*.pem

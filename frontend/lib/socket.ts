@@ -1,6 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { getAccessToken } from "./authStore";
-import { getSocketUrl } from "./env";
+import { getSocketUrl } from "./api";
 
 export const socket: Socket = io(getSocketUrl(), {
   autoConnect: false,

@@ -10,9 +10,13 @@ import {
   setAccessToken,
   type AuthTokensResponse,
 } from "./authStore";
-import { getApiBaseUrl } from "./env";
+export const getApiBaseUrl = (): string => {
+  return (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+};
 
-export { getApiBaseUrl };
+export const getSocketUrl = (): string => {
+  return (process.env.NEXT_PUBLIC_SOCKET_URL || "").replace(/\/+$/, "");
+};
 
 export interface UserProfile {
   _id: string;

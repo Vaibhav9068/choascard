@@ -25,8 +25,10 @@ const corsOptions = {
     if (NODE_ENV !== 'production') {
       return callback(null, true);
     }
-    const allowed = Array.isArray(FRONTEND_URL) ? FRONTEND_URL : [FRONTEND_URL];
-    if (allowed.includes(origin)) {
+    const allowedOrigins = process.env.CLIENT_URL
+      ? process.env.CLIENT_URL.split(',').map((o) => o.trim()).filter(Boolean)
+      : [];
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error('Not allowed by CORS'));

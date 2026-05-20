@@ -25,10 +25,10 @@ module.exports = {
   NODE_ENV: process.env.NODE_ENV || 'development',
   CLIENT_URL: clientUrlEnv
     ? parseOrigins(clientUrlEnv)
-    : ['http://localhost:3000'],
+    : [],
   FRONTEND_URL: clientUrlEnv
     ? parseOrigins(clientUrlEnv)
-    : ['http://localhost:3000'],
+    : [],
   OTP_EXPIRY_MS: 5 * 60 * 1000,
   OTP_MAX_ATTEMPTS: 5,
   OTP_RESEND_COOLDOWN_MS: 60 * 1000,

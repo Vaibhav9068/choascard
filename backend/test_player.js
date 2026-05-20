@@ -1,7 +1,12 @@
 require('dotenv').config();
 const { io } = require('socket.io-client');
 
-const SOCKET_URL = process.env.SOCKET_URL || 'http://localhost:5000';
+const SOCKET_URL = process.env.SOCKET_URL;
+
+if (!SOCKET_URL) {
+  console.error('Error: SOCKET_URL environment variable is not defined in .env.');
+  process.exit(1);
+}
 const roomId = process.argv[2];
 
 if (!roomId) {

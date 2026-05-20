@@ -6,7 +6,7 @@ const LEGACY_JWT_COOKIE = 'jwt';
 const cookieOptions = {
   httpOnly: true,
   secure: NODE_ENV === 'production',
-  sameSite: NODE_ENV === 'production' ? 'strict' : 'lax',
+  sameSite: NODE_ENV === 'production' ? 'none' : 'lax',
   path: '/',
 };
 
@@ -28,7 +28,7 @@ const clearLegacyJwtCookie = (res) => {
   res.cookie(LEGACY_JWT_COOKIE, '', {
     httpOnly: true,
     secure: NODE_ENV === 'production',
-    sameSite: 'strict',
+    sameSite: NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
     expires: new Date(0),
   });

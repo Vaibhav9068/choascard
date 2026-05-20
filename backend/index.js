@@ -9,8 +9,15 @@ const { setupSocket } = require('./sockets');
 const validateEnv = require('./config/validateEnv');
 const { PORT, CLIENT_URL, NODE_ENV } = require('./config/config');
 const connectDB = require('./config/database');
+const { verifySmtpConnection } = require('./services/emailService');
 
 validateEnv();
+
+// Trigger SMTP verification check on startup
+verifySmtpConnection().catch((err) => {
+  console.error('[Startup] SMTP check failed to initiate:', err);
+});
+
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 const { cleanupExpiredRefreshTokens } = require('./services/tokenService');
 

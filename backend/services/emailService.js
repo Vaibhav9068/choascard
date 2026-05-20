@@ -1,24 +1,31 @@
 const nodemailer = require('nodemailer');
-const { google } = require('googleapis');
+const ApiError = require('../utils/ApiError');
 const {
   GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET,
   GOOGLE_REFRESH_TOKEN,
   GOOGLE_USER,
 } = require('../config/config');
-const ApiError = require('../utils/ApiError');
 
 let transporter = null;
 
 const createTransporter = async () => {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN || !GOOGLE_USER) {
-    throw new ApiError(500, 'Email service is not configured');
+    console.error('[EmailService] Missing Gmail credentials:', {
+      hasClientId: !!GOOGLE_CLIENT_ID,
+      hasClientSecret: !!GOOGLE_CLIENT_SECRET,
+      hasRefreshToken: !!GOOGLE_REFRESH_TOKEN,
+      hasUser: !!GOOGLE_USER,
+    });
+    throw new ApiError(500, 'Email service is not configured correctly in env variables.');
   }
 
   try {
-    console.log('[EmailService] Creating Nodemailer transporter with native OAuth2 auto-refresh...');
+    console.log('[EmailService] Initializing SMTP transporter for smtp.gmail.com (IPv4-forced)...');
     return nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true,
       auth: {
         type: 'OAuth2',
         user: GOOGLE_USER,
@@ -29,6 +36,8 @@ const createTransporter = async () => {
       connectionTimeout: 8000, // 8 seconds
       greetingTimeout: 8000,   // 8 seconds
       socketTimeout: 10000,    // 10 seconds
+      dnsTimeout: 5000,
+      family: 4,               // Force IPv4 to prevent Render IPv6 timeouts
     });
   } catch (error) {
     console.error('[EmailService] Transporter creation failed:', error);
@@ -41,6 +50,24 @@ const getTransporter = async () => {
     transporter = await createTransporter();
   }
   return transporter;
+};
+
+const verifySmtpConnection = async () => {
+  try {
+    console.log('[EmailService] Verifying SMTP connection to smtp.gmail.com...');
+    const mailer = await getTransporter();
+    await mailer.verify();
+    console.log('[EmailService] SMTP connection verified successfully!');
+    return true;
+  } catch (error) {
+    console.error('[EmailService] SMTP verification failed:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+    });
+    transporter = null; // Force recreation on next attempt
+    return false;
+  }
 };
 
 const sendOtpEmail = async (email, otp) => {
@@ -66,11 +93,15 @@ const sendOtpEmail = async (email, otp) => {
     console.log(`[EmailService] OTP email sent successfully. Message ID: ${info.messageId}`);
     return info;
   } catch (error) {
-    console.error(`[EmailService] Error occurred while sending OTP email to ${email}:`, error);
+    console.error(`[EmailService] Error occurred while sending OTP email to ${email}:`, {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+    });
     // Reset transporter on failure to force recreation on the next request
     transporter = null;
     throw new ApiError(500, `Email delivery failed: ${error.message}`);
   }
 };
 
-module.exports = { sendOtpEmail };
+module.exports = { sendOtpEmail, verifySmtpConnection };

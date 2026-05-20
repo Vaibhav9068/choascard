@@ -1,5 +1,5 @@
 const required = {
-  all: ['MONGO_URI', 'JWT_SECRET', 'RESEND_API_KEY'],
+  all: ['MONGO_URI', 'JWT_SECRET', 'EMAIL_USER', 'EMAIL_PASS'],
   production: [
     'CLIENT_URL',
   ],

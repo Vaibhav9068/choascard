@@ -18,7 +18,8 @@ module.exports = {
   ACCESS_TOKEN_EXPIRY: process.env.ACCESS_TOKEN_EXPIRY || '15m',
   REFRESH_TOKEN_EXPIRY: process.env.REFRESH_TOKEN_EXPIRY || '7d',
   REFRESH_TOKEN_MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000,
-  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  EMAIL_USER: process.env.EMAIL_USER,
+  EMAIL_PASS: process.env.EMAIL_PASS,
   NODE_ENV: process.env.NODE_ENV || 'development',
   CLIENT_URL: clientUrlEnv
     ? parseOrigins(clientUrlEnv)

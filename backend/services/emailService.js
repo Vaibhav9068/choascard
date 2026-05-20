@@ -1,51 +1,87 @@
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
+const dns = require('dns').promises;
 const ApiError = require('../utils/ApiError');
-const { RESEND_API_KEY } = require('../config/config');
+const { EMAIL_USER, EMAIL_PASS } = require('../config/config');
 
-let resendInstance = null;
+let transporter = null;
 
-const getResendClient = () => {
-  if (!resendInstance) {
-    if (!RESEND_API_KEY) {
-      throw new ApiError(500, 'Resend API key is not configured in env variables.');
+const resolveSmtpHost = async () => {
+  try {
+    const addresses = await dns.resolve4('smtp.gmail.com');
+    if (addresses && addresses.length > 0) {
+      const selectedIp = addresses[Math.floor(Math.random() * addresses.length)];
+      console.log(`[EmailService] Programmatically resolved smtp.gmail.com to IPv4: ${selectedIp}`);
+      return selectedIp;
     }
-    resendInstance = new Resend(RESEND_API_KEY);
+  } catch (dnsErr) {
+    console.error('[EmailService] DNS resolution for smtp.gmail.com failed, falling back to hostname:', dnsErr.message);
   }
-  return resendInstance;
+  return 'smtp.gmail.com';
+};
+
+const createTransporter = async () => {
+  if (!EMAIL_USER || !EMAIL_PASS) {
+    console.error('[EmailService] Missing Gmail App Password credentials:', {
+      hasUser: !!EMAIL_USER,
+      hasPass: !!EMAIL_PASS,
+    });
+    throw new ApiError(500, 'Email service is not configured correctly in env variables.');
+  }
+
+  try {
+    const resolvedIp = await resolveSmtpHost();
+    console.log(`[EmailService] Creating Nodemailer transporter using IP ${resolvedIp} for user ${EMAIL_USER}...`);
+    return nodemailer.createTransport({
+      host: resolvedIp,
+      port: 465,
+      secure: true,
+      auth: {
+        user: EMAIL_USER,
+        pass: EMAIL_PASS,
+      },
+      connectionTimeout: 8000, // 8 seconds
+      greetingTimeout: 8000,   // 8 seconds
+      socketTimeout: 10000,    // 10 seconds
+      dnsTimeout: 5000,
+      tls: {
+        servername: 'smtp.gmail.com', // Must match the SSL certificate hostname
+      },
+    });
+  } catch (error) {
+    console.error('[EmailService] Transporter creation failed:', error);
+    throw new ApiError(500, `Failed to initialize email transport: ${error.message}`);
+  }
+};
+
+const getTransporter = async () => {
+  if (!transporter) {
+    transporter = await createTransporter();
+  }
+  return transporter;
 };
 
 const verifySmtpConnection = async () => {
   try {
-    if (!RESEND_API_KEY) {
-      console.error('[EmailService] Resend API Key is missing.');
-      return false;
-    }
-    // Check if client initializes
-    getResendClient();
-    console.log('[EmailService] Resend API service initialized successfully.');
+    console.log('[EmailService] Verifying SMTP connection to smtp.gmail.com...');
+    const mailer = await getTransporter();
+    await mailer.verify();
+    console.log('[EmailService] SMTP connected');
     return true;
   } catch (error) {
-    console.error('[EmailService] Resend initialization failed:', error.message);
+    console.error('[EmailService] SMTP verification failed:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+    });
+    transporter = null; // Force recreation on next attempt
     return false;
   }
 };
 
-const sendWithTimeout = async (promise, ms = 8000) => {
-  let timeoutId;
-  const timeoutPromise = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error('Email dispatch timed out'));
-    }, ms);
-  });
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    clearTimeout(timeoutId);
-  });
-};
-
 const sendOtpEmail = async (email, otp) => {
   try {
-    console.log(`[EmailService] Preparing OTP email to send to: ${email}`);
-    const client = getResendClient();
+    console.log(`[EmailService] Attempting to send OTP email to: ${email}`);
+    const mailer = await getTransporter();
 
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; background-color: #0d0e12; color: #ffffff; max-width: 480px; margin: 0 auto; padding: 32px; border-radius: 12px; border: 1px solid #1a1c23; box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
@@ -65,30 +101,24 @@ const sendOtpEmail = async (email, otp) => {
       </div>
     `;
 
-    // Free Resend accounts allow sending to registered domain owners from onboarding@resend.dev
-    const fromAddress = 'Chaos Deck <onboarding@resend.dev>';
+    const info = await mailer.sendMail({
+      from: `"CHAOS DECK" <${EMAIL_USER}>`,
+      to: email,
+      subject: 'CHAOS DECK — Email Verification Code',
+      text: `Your verification code is ${otp}. It expires in 5 minutes.`,
+      html: htmlContent,
+    });
 
-    console.log(`[EmailService] Sending email via Resend API to ${email}...`);
-    
-    const response = await sendWithTimeout(
-      client.emails.send({
-        from: fromAddress,
-        to: email,
-        subject: 'CHAOS DECK — Email Verification Code',
-        html: htmlContent,
-      }),
-      8000 // 8 seconds timeout
-    );
-
-    if (response.error) {
-      console.error('[EmailService] Resend API failed:', response.error);
-      throw new Error(response.error.message || 'Resend API returned an error');
-    }
-
-    console.log(`[EmailService] OTP sent successfully. ID: ${response.data?.id}`);
-    return response.data;
+    console.log(`[EmailService] OTP sent successfully. Message ID: ${info.messageId}`);
+    return info;
   } catch (error) {
-    console.error(`[EmailService] Failed to send OTP email via Resend to ${email}:`, error.message);
+    console.error(`[EmailService] Email send failed for ${email}:`, {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+    });
+    // Reset transporter on failure to force recreation on the next request
+    transporter = null;
     throw new ApiError(500, `Email delivery failed: ${error.message}`);
   }
 };

@@ -1,10 +1,6 @@
 const required = {
-  all: ['MONGO_URI', 'JWT_SECRET'],
+  all: ['MONGO_URI', 'JWT_SECRET', 'RESEND_API_KEY'],
   production: [
-    'GOOGLE_CLIENT_ID',
-    'GOOGLE_CLIENT_SECRET',
-    'GOOGLE_REFRESH_TOKEN',
-    'GOOGLE_USER',
     'CLIENT_URL',
   ],
 };

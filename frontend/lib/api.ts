@@ -15,13 +15,13 @@ axios.defaults.withCredentials = true;
 export const getApiBaseUrl = (): string => {
   if (typeof window !== "undefined") {
     if (window.location.hostname.includes("choascard.vercel.app")) {
-      return "https://choascard.onrender.com/api";
+      return "https://choascard.onrender.com";
     }
   }
-  let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api";
+  let url = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
   url = url.replace(/\/+$/, "");
-  if (!url.endsWith("/api")) {
-    url += "/api";
+  if (url.endsWith("/api")) {
+    url = url.slice(0, -4);
   }
   return url;
 };

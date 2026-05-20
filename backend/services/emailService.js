@@ -1,71 +1,54 @@
 const nodemailer = require('nodemailer');
-const dns = require('dns').promises;
+const dns = require('dns');
 const ApiError = require('../utils/ApiError');
 const { EMAIL_USER, EMAIL_PASS } = require('../config/config');
 
+// Force ALL DNS lookups in this Node.js process to prefer IPv4.
+// This is the only reliable way to prevent Render's container runtime
+// from attempting IPv6 connections to smtp.gmail.com (which causes
+// ENETUNREACH / ETIMEDOUT errors).
+dns.setDefaultResultOrder('ipv4first');
+
 let transporter = null;
 
-const resolveSmtpHost = async () => {
-  try {
-    const addresses = await dns.resolve4('smtp.gmail.com');
-    if (addresses && addresses.length > 0) {
-      const selectedIp = addresses[Math.floor(Math.random() * addresses.length)];
-      console.log(`[EmailService] Programmatically resolved smtp.gmail.com to IPv4: ${selectedIp}`);
-      return selectedIp;
-    }
-  } catch (dnsErr) {
-    console.error('[EmailService] DNS resolution for smtp.gmail.com failed, falling back to hostname:', dnsErr.message);
-  }
-  return 'smtp.gmail.com';
-};
-
-const createTransporter = async () => {
+const createTransporter = () => {
   if (!EMAIL_USER || !EMAIL_PASS) {
     console.error('[EmailService] Missing Gmail App Password credentials:', {
       hasUser: !!EMAIL_USER,
       hasPass: !!EMAIL_PASS,
     });
-    throw new ApiError(500, 'Email service is not configured correctly in env variables.');
+    throw new ApiError(500, 'Email service is not configured. Set EMAIL_USER and EMAIL_PASS.');
   }
 
-  try {
-    const resolvedIp = await resolveSmtpHost();
-    console.log(`[EmailService] Creating Nodemailer transporter using IP ${resolvedIp} for user ${EMAIL_USER}...`);
-    return nodemailer.createTransport({
-      host: resolvedIp,
-      port: 465,
-      secure: true,
-      auth: {
-        user: EMAIL_USER,
-        pass: EMAIL_PASS,
-      },
-      connectionTimeout: 8000, // 8 seconds
-      greetingTimeout: 8000,   // 8 seconds
-      socketTimeout: 10000,    // 10 seconds
-      dnsTimeout: 5000,
-      tls: {
-        servername: 'smtp.gmail.com', // Must match the SSL certificate hostname
-      },
-    });
-  } catch (error) {
-    console.error('[EmailService] Transporter creation failed:', error);
-    throw new ApiError(500, `Failed to initialize email transport: ${error.message}`);
-  }
+  console.log(`[EmailService] Creating SMTP transporter (port 587 STARTTLS, IPv4-first) for ${EMAIL_USER}...`);
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false, // false = use STARTTLS upgrade after connecting
+    requireTLS: true, // force TLS upgrade — reject if STARTTLS is unavailable
+    auth: {
+      user: EMAIL_USER,
+      pass: EMAIL_PASS,
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  });
 };
 
-const getTransporter = async () => {
+const getTransporter = () => {
   if (!transporter) {
-    transporter = await createTransporter();
+    transporter = createTransporter();
   }
   return transporter;
 };
 
 const verifySmtpConnection = async () => {
   try {
-    console.log('[EmailService] Verifying SMTP connection to smtp.gmail.com...');
-    const mailer = await getTransporter();
+    console.log('[EmailService] Verifying SMTP connection to smtp.gmail.com:587...');
+    const mailer = getTransporter();
     await mailer.verify();
-    console.log('[EmailService] SMTP connected');
+    console.log('[EmailService] SMTP connected — Gmail App Password verified successfully');
     return true;
   } catch (error) {
     console.error('[EmailService] SMTP verification failed:', {
@@ -73,15 +56,15 @@ const verifySmtpConnection = async () => {
       code: error.code,
       command: error.command,
     });
-    transporter = null; // Force recreation on next attempt
+    transporter = null;
     return false;
   }
 };
 
 const sendOtpEmail = async (email, otp) => {
   try {
-    console.log(`[EmailService] Attempting to send OTP email to: ${email}`);
-    const mailer = await getTransporter();
+    console.log(`[EmailService] Sending OTP email to: ${email}`);
+    const mailer = getTransporter();
 
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; background-color: #0d0e12; color: #ffffff; max-width: 480px; margin: 0 auto; padding: 32px; border-radius: 12px; border: 1px solid #1a1c23; box-shadow: 0 4px 20px rgba(0,0,0,0.4);">
@@ -117,7 +100,6 @@ const sendOtpEmail = async (email, otp) => {
       code: error.code,
       command: error.command,
     });
-    // Reset transporter on failure to force recreation on the next request
     transporter = null;
     throw new ApiError(500, `Email delivery failed: ${error.message}`);
   }

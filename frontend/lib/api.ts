@@ -196,15 +196,8 @@ export async function apiFetch<T = unknown>(
 
 export const restoreSession = async (): Promise<boolean> => {
   try {
-    await refreshAccessToken();
-    const me = await apiFetch<UserProfile>("/api/auth/me");
-    if (me.data) {
-      const { setAuthUser } = await import("./authStore");
-      setAuthUser(me.data);
-      return true;
-    }
-    clearAuth();
-    return false;
+    const token = await refreshAccessToken();
+    return !!token;
   } catch {
     clearAuth();
     return false;

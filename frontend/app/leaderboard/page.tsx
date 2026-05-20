@@ -22,12 +22,11 @@ export default function LeaderboardPage() {
 
   useEffect(() => {
     async function fetchLeaderboard() {
-      const res = await apiFetch<LeaderboardUser[]>("/api/api/users/leaderboard"); // Wait, path is /api/users/leaderboard, and apiFetch appends /api/auth or base URL, let's check lib/api.ts. It appends API_BASE_URL. So path should be /api/users/leaderboard. Let's fix.
-      const correctRes = await apiFetch<LeaderboardUser[]>("/api/users/leaderboard");
-      if (correctRes.error) {
-        setError(correctRes.error);
-      } else if (correctRes.data) {
-        setPlayers(correctRes.data);
+      const res = await apiFetch<LeaderboardUser[]>("/api/users/leaderboard");
+      if (res.error) {
+        setError(res.error);
+      } else if (res.data) {
+        setPlayers(res.data);
       }
       setLoading(false);
     }

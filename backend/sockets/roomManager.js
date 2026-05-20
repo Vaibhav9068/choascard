@@ -85,6 +85,11 @@ const handleRoomEvents = (io, socket, rooms, disconnectTimers) => {
         existingPlayer.connected = true;
         socket.join(roomId);
 
+        // Ensure host is assigned if missing or invalid
+        if (!room.hostId || !room.players.some(p => p._id === room.hostId)) {
+          room.hostId = existingPlayer._id;
+        }
+
         console.log(`Player ${existingPlayer.username} successfully reconnected to room ${roomId}`);
 
         // Emit updates to everyone in room
@@ -107,6 +112,12 @@ const handleRoomEvents = (io, socket, rooms, disconnectTimers) => {
       }
 
       room.players.push({ ...user, socketId: socket.id, connected: true });
+
+      // Ensure host is assigned if missing or invalid
+      if (!room.hostId || !room.players.some(p => p._id === room.hostId)) {
+        room.hostId = user._id;
+      }
+
       socket.join(roomId);
       io.to(roomId).emit('room_update', room);
     });

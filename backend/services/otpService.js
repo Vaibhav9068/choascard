@@ -37,13 +37,18 @@ const createAndSendOtp = async (email) => {
   const otp = generateOtp();
   const otpHash = await hashOtp(otp);
 
-  await OTP.create({
-    email: normalized,
-    otpHash,
-    attempts: 0,
-    resendCount: existing ? existing.resendCount + 1 : 1,
-    lastSentAt: new Date(),
-  });
+  try {
+    await OTP.create({
+      email: normalized,
+      otpHash,
+      attempts: 0,
+      resendCount: existing ? existing.resendCount + 1 : 1,
+      lastSentAt: new Date(),
+    });
+  } catch (dbErr) {
+    console.error(`[OtpService] Failed to save OTP in DB for ${normalized}:`, dbErr);
+    throw new ApiError(500, `Failed to initialize verification: ${dbErr.message}`);
+  }
 
   await sendOtpEmail(normalized, otp);
 

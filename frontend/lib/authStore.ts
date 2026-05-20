@@ -30,6 +30,9 @@ export const setAuthUser = (nextUser: UserProfile | null) => {
 export const clearAuth = () => {
   accessToken = null;
   user = null;
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("chaosdeck_logged_in");
+  }
   notify();
 };
 
@@ -42,4 +45,7 @@ export interface AuthTokensResponse {
 export const applyAuthSession = (payload: AuthTokensResponse) => {
   setAccessToken(payload.accessToken);
   setAuthUser(payload.user);
+  if (typeof window !== "undefined") {
+    localStorage.setItem("chaosdeck_logged_in", "true");
+  }
 };

@@ -32,13 +32,20 @@ const register = async ({ fullName, username, email, password }) => {
   });
 
   if (existing) {
-    throw new ApiError(400, 'User already exists');
+    if (!existing.isVerified) {
+      console.log(`[AuthService] Deleting unverified existing user ${existing.username} (${existing.email}) to allow re-registration.`);
+      await User.deleteOne({ _id: existing._id });
+      const OTP = require('../models/OTP');
+      await OTP.deleteMany({ email: existing.email });
+    } else {
+      throw new ApiError(400, 'User already exists');
+    }
   }
 
   const salt = await bcrypt.genSalt(10);
   const hashedPassword = await bcrypt.hash(password, salt);
 
-  await User.create({
+  const newUser = await User.create({
     fullName: fullName.trim(),
     username: username.trim(),
     email: normalizedEmail,
@@ -46,7 +53,13 @@ const register = async ({ fullName, username, email, password }) => {
     isVerified: false,
   });
 
-  await createAndSendOtp(normalizedEmail);
+  try {
+    await createAndSendOtp(normalizedEmail);
+  } catch (error) {
+    console.error(`[AuthService] Failed to send registration OTP to ${normalizedEmail}. Rolling back user registration.`, error);
+    await User.deleteOne({ _id: newUser._id });
+    throw error;
+  }
 
   return { message: 'Registration successful. OTP sent to your email.' };
 };

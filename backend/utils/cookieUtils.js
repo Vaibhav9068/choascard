@@ -3,10 +3,12 @@ const { NODE_ENV, REFRESH_TOKEN_MAX_AGE_MS } = require('../config/config');
 const REFRESH_COOKIE_NAME = 'refreshToken';
 const LEGACY_JWT_COOKIE = 'jwt';
 
+const isProduction = NODE_ENV === 'production' || process.env.NODE_ENV === 'production';
+
 const cookieOptions = {
   httpOnly: true,
-  secure: NODE_ENV === 'production',
-  sameSite: NODE_ENV === 'production' ? 'none' : 'lax',
+  secure: isProduction,
+  sameSite: isProduction ? 'none' : 'lax',
   path: '/',
 };
 
@@ -27,8 +29,8 @@ const clearRefreshTokenCookie = (res) => {
 const clearLegacyJwtCookie = (res) => {
   res.cookie(LEGACY_JWT_COOKIE, '', {
     httpOnly: true,
-    secure: NODE_ENV === 'production',
-    sameSite: NODE_ENV === 'production' ? 'none' : 'lax',
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
     path: '/',
     expires: new Date(0),
   });

@@ -8,7 +8,7 @@ const parseOrigins = (value) =>
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-const clientUrlEnv = process.env.CLIENT_URL || process.env.FRONTEND_URL;
+const clientUrlEnv = process.env.CLIENT_URL;
 
 module.exports = {
   PORT: process.env.PORT || 5000,
@@ -24,9 +24,6 @@ module.exports = {
   GOOGLE_USER: process.env.GOOGLE_USER,
   NODE_ENV: process.env.NODE_ENV || 'development',
   CLIENT_URL: clientUrlEnv
-    ? parseOrigins(clientUrlEnv)
-    : [],
-  FRONTEND_URL: clientUrlEnv
     ? parseOrigins(clientUrlEnv)
     : [],
   OTP_EXPIRY_MS: 5 * 60 * 1000,

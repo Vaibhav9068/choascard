@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const dns = require('dns').promises;
 const ApiError = require('../utils/ApiError');
 const {
   GOOGLE_CLIENT_ID,
@@ -8,6 +9,20 @@ const {
 } = require('../config/config');
 
 let transporter = null;
+
+const resolveSmtpHost = async () => {
+  try {
+    const addresses = await dns.resolve4('smtp.gmail.com');
+    if (addresses && addresses.length > 0) {
+      const selectedIp = addresses[Math.floor(Math.random() * addresses.length)];
+      console.log(`[EmailService] Programmatically resolved smtp.gmail.com to IPv4: ${selectedIp}`);
+      return selectedIp;
+    }
+  } catch (dnsErr) {
+    console.error('[EmailService] DNS resolution for smtp.gmail.com failed, falling back to hostname:', dnsErr.message);
+  }
+  return 'smtp.gmail.com';
+};
 
 const createTransporter = async () => {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN || !GOOGLE_USER) {
@@ -21,9 +36,10 @@ const createTransporter = async () => {
   }
 
   try {
-    console.log('[EmailService] Initializing SMTP transporter for smtp.gmail.com (IPv4-forced)...');
+    const resolvedIp = await resolveSmtpHost();
+    console.log(`[EmailService] Creating Nodemailer transporter for IP ${resolvedIp}...`);
     return nodemailer.createTransport({
-      host: 'smtp.gmail.com',
+      host: resolvedIp,
       port: 465,
       secure: true,
       auth: {
@@ -37,7 +53,9 @@ const createTransporter = async () => {
       greetingTimeout: 8000,   // 8 seconds
       socketTimeout: 10000,    // 10 seconds
       dnsTimeout: 5000,
-      family: 4,               // Force IPv4 to prevent Render IPv6 timeouts
+      tls: {
+        servername: 'smtp.gmail.com', // Must match the SSL certificate hostname
+      },
     });
   } catch (error) {
     console.error('[EmailService] Transporter creation failed:', error);

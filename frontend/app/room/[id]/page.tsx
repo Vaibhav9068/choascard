@@ -196,6 +196,8 @@ export default function RoomPage() {
 
   const [showExitModal, setShowExitModal] = useState(false);
   const [showDisbandModal, setShowDisbandModal] = useState(false);
+  const [roundEnding, setRoundEnding] = useState(false);
+  const [roundWinnerName, setRoundWinnerName] = useState("");
   const isLeavingRef = useRef(false);
 
   useEffect(() => {
@@ -276,7 +278,15 @@ export default function RoomPage() {
     });
 
     socket.on("match_end", (results: MatchResult[]) => {
-      setMatchResults(results);
+      setRoundEnding(true);
+      const winner = results[0];
+      if (winner) {
+        setRoundWinnerName(winner.username);
+      }
+      setTimeout(() => {
+        setMatchResults(results);
+        setRoundEnding(false);
+      }, 2000);
     });
 
     socket.on("room_disbanded", () => {
@@ -378,6 +388,7 @@ export default function RoomPage() {
 
   // Card click handler
   const handleCardClick = useCallback((card: any) => {
+    if (roundEnding) return;
     if (!room?.gameState) return;
     const state = room.gameState;
     const isOurTurn = room.players[state.turnIndex]._id === user?._id;
@@ -405,7 +416,7 @@ export default function RoomPage() {
         payload: { card }
       });
     }
-  }, [room, user, roomId]);
+  }, [room, user, roomId, roundEnding]);
 
   const submitPlayWithPayload = useCallback((selectedColor?: string, targetId?: string) => {
     if (!overlay.card) return;
@@ -422,6 +433,7 @@ export default function RoomPage() {
   }, [overlay.card, roomId]);
 
   const handleDrawCard = useCallback(() => {
+    if (roundEnding) return;
     if (!room?.gameState) return;
     const state = room.gameState;
     const isOurTurn = room.players[state.turnIndex]._id === user?._id;
@@ -431,9 +443,10 @@ export default function RoomPage() {
       roomId,
       action: "draw_card"
     });
-  }, [room, user, roomId]);
+  }, [room, user, roomId, roundEnding]);
 
   const handlePassTurn = useCallback(() => {
+    if (roundEnding) return;
     if (!room?.gameState) return;
     const state = room.gameState;
     const isOurTurn = room.players[state.turnIndex]._id === user?._id;
@@ -443,7 +456,7 @@ export default function RoomPage() {
       roomId,
       action: "pass_turn"
     });
-  }, [room, user, roomId]);
+  }, [room, user, roomId, roundEnding]);
 
   // Render proper game card component helper
   const renderGameCard = useCallback((card: any, index: number, isPlayable: boolean) => {
@@ -464,6 +477,7 @@ export default function RoomPage() {
 
   // Check if a card is playable in the current hand
   const isCardPlayable = useCallback((card: any) => {
+    if (roundEnding) return false;
     if (!room?.gameState || !room?.gameStarted || !user) return false;
     const state = room.gameState;
     const activePlayer = room.players[state.turnIndex];
@@ -480,7 +494,7 @@ export default function RoomPage() {
     }
 
     return (card.color === "Any" || card.color === state.activeColor || card.value === topCard.value);
-  }, [room, user]);
+  }, [room, user, roundEnding]);
 
   // Memoize opponent data relative to the current player's seat position
   const opponentData = useMemo(() => {
@@ -778,7 +792,24 @@ export default function RoomPage() {
         </div>
       ) : (
         /* -------------------- 4. GAME SCREEN — TABLE LAYOUT -------------------- */
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          {/* Round Ending Overlay banner */}
+          <AnimatePresence>
+            {roundEnding && (
+              <m.div
+                initial={{ opacity: 0, y: -50 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -50 }}
+                className="absolute top-[12%] left-1/2 -translate-x-1/2 z-30 bg-black/90 border border-accent/30 rounded-full py-2.5 px-6 shadow-[0_0_30px_rgba(250,229,0,0.1)] backdrop-blur-sm flex items-center gap-3 w-max"
+              >
+                <div className="w-2.5 h-2.5 rounded-full bg-accent animate-ping" />
+                <span className="text-xs font-black uppercase tracking-wider text-gray-300">
+                  Round Complete! <span className="text-accent">{roundWinnerName}</span> played the final card.
+                </span>
+              </m.div>
+            )}
+          </AnimatePresence>
+
           {/* Top Panel (Turn indicators + Direction + Stacking) */}
           <div className="relative z-20 border-b border-white/5 bg-black/60 backdrop-blur-sm px-4 sm:px-6 py-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -865,7 +896,7 @@ export default function RoomPage() {
               <div className="flex flex-col items-center">
                 <button
                   onClick={handleDrawCard}
-                  disabled={room.players[state.turnIndex]._id !== user?._id}
+                  disabled={room.players[state.turnIndex]?._id !== user?._id || roundEnding}
                   className="cursor-pointer hover:scale-105 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed relative"
                 >
                   {/* Shadow cards */}
@@ -882,6 +913,7 @@ export default function RoomPage() {
                 <m.div
                   layout
                   className={`relative p-1 rounded-[20px] transition-shadow duration-300 ${
+                    roundEnding ? "shadow-[0_0_35px_rgba(250,229,0,0.8)] animate-pulse" :
                     state.activeColor === "Red" ? "shadow-[0_0_20px_rgba(255,51,102,0.4)]" :
                     state.activeColor === "Blue" ? "shadow-[0_0_20px_rgba(51,153,255,0.4)]" :
                     state.activeColor === "Green" ? "shadow-[0_0_20px_rgba(0,255,136,0.4)]" :
@@ -934,7 +966,7 @@ export default function RoomPage() {
                 <span className="opacity-60">({state.hands[user._id]?.length || 0})</span>
               </m.div>
 
-              {room.players[state.turnIndex]._id === user?._id && (
+              {room.players[state.turnIndex]?._id === user?._id && !roundEnding && (
                 <div className="flex gap-2">
                   <button
                     onClick={handleDrawCard}

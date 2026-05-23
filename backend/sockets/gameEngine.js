@@ -223,6 +223,9 @@ const handleGameEvents = (io, socket, rooms) => {
         // Win Condition check
         if (playerHand.length === 0) {
           state.winner = currentPlayer._id;
+          // Broadcast final card and state BEFORE emitting match_end so clients update UI
+          broadcastGameState(io, room);
+          io.to(room.id).emit('room_update', room);
           await handleMatchEnd(room, io);
           return;
         }

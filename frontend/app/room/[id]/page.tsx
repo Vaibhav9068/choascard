@@ -43,20 +43,17 @@ interface MatchResult {
 /* ------------------------------------------------------------------ */
 const getOpponentPositions = (count: number) => {
   const positions: { top: string; left: string; transform: string }[] = [];
-  // Opponents are spread across the arc from ~210° to ~330° (bottom-excluded)
-  // Using ellipse: radiusX ~42%, radiusY ~38%, center at (50%, 48%)
+  // Center of the circular/elliptical table layout
   const cx = 50;
   const cy = 48;
   const rx = 42;
   const ry = 38;
-  // Spread opponents evenly across arc from π*7/6 (210°) around through 0° to π*11/6 (330°)
-  // This places them along the top and sides, avoiding the bottom where the self player sits
-  const startAngle = (210 * Math.PI) / 180;
-  const endAngle = (330 * Math.PI) / 180;
-  const totalArc = (360 - (330 - 210)) * (Math.PI / 180); // arc through top
+  // Spread opponents along the top arc from -30° (Right/Bottom-Right) to 210° (Left/Bottom-Left)
+  // This layout flows counter-clockwise (Right -> Top -> Left), matching visual seating order.
+  const startAngle = (-30 * Math.PI) / 180;
+  const totalArc = (240 * Math.PI) / 180;
   for (let i = 0; i < count; i++) {
     const fraction = count === 1 ? 0.5 : i / (count - 1);
-    // Interpolate from startAngle, going counter-clockwise through top
     const angle = startAngle + fraction * totalArc;
     const x = cx + rx * Math.cos(angle);
     const y = cy - ry * Math.sin(angle);
@@ -436,15 +433,30 @@ export default function RoomPage() {
     return (card.color === "Any" || card.color === state.activeColor || card.value === topCard.value);
   }, [room, user]);
 
-  // Memoize opponent data
+  // Memoize opponent data relative to the current player's seat position
   const opponentData = useMemo(() => {
     if (!room?.gameState || !user) return [];
-    const opponents = room.players.filter(p => p._id !== user._id);
+    
+    // Find current player's index in the authoritative players list (join order / gameplay sequence)
+    const myIndex = room.players.findIndex(p => p._id === user._id);
+    const totalPlayers = room.players.length;
+    
+    let opponents: RoomPlayer[] = [];
+    if (myIndex !== -1 && totalPlayers > 1) {
+      // Order opponents starting from the player after the current player, wrapping around
+      for (let i = 1; i < totalPlayers; i++) {
+        opponents.push(room.players[(myIndex + i) % totalPlayers]);
+      }
+    } else {
+      // Spectator or fallback case
+      opponents = room.players.filter(p => p._id !== user._id);
+    }
+    
     const positions = getOpponentPositions(opponents.length);
     return opponents.map((player, i) => ({
       player,
       cardCount: room.gameState.hands[player._id]?.length || 0,
-      isActive: room.players[room.gameState.turnIndex]._id === player._id,
+      isActive: room.players[room.gameState.turnIndex]?._id === player._id,
       isDisconnected: player.connected === false,
       position: positions[i],
     }));

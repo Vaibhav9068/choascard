@@ -17,24 +17,27 @@ const getSocketInstance = (): Socket | null => {
       transports: ["websocket"],
     });
 
-    // Handle token expiration/auth error on reconnect attempt
+    // Handle token expiration/auth error on connect attempt
     socketInstance.on("connect_error", async (err) => {
       console.warn("[Socket] Connection error:", err.message);
       if (err.message && err.message.toLowerCase().includes("auth")) {
         if (isRefreshing) return;
         isRefreshing = true;
-        console.log("[Socket] Auth error detected. Attempting to refresh token...");
+        console.log("[Socket] Auth error detected. Refreshing token silently...");
         try {
           const { restoreSession } = await import("./api");
           const success = await restoreSession();
           if (success) {
-            console.log("[Socket] Session restored successfully. Reconnecting socket...");
-            reconnectSocketWithFreshToken();
+            console.log("[Socket] Token refreshed. Updating socket auth for next retry...");
+            // Just update the auth — socket.io will automatically retry connection
+            // Do NOT call reconnectSocketWithFreshToken() as that triggers
+            // a disconnect event visible to the room page overlay.
+            updateSocketAuth();
           } else {
-            console.error("[Socket] Failed to restore session on auth error.");
+            console.error("[Socket] Session restore failed.");
           }
         } catch (refreshErr) {
-          console.error("[Socket] Error during token refresh for socket:", refreshErr);
+          console.error("[Socket] Token refresh error:", refreshErr);
         } finally {
           isRefreshing = false;
         }

@@ -189,7 +189,7 @@ export default function RoomPage() {
   const [error, setError] = useState("");
   const [matchResults, setMatchResults] = useState<MatchResult[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isSocketDisconnected, setIsSocketDisconnected] = useState(!socket.connected);
+  const [isSocketDisconnected, setIsSocketDisconnected] = useState(false);
 
   // Overlay state: Color picking or Targeting
   const [overlay, setOverlay] = useState<{
@@ -212,20 +212,42 @@ export default function RoomPage() {
 
     setLoading(false);
 
+    // Grace period timer ref — prevents overlay flash on programmatic reconnects
+    let disconnectGraceTimer: ReturnType<typeof setTimeout> | null = null;
+
     const onConnect = () => {
-      console.log("Socket connected, joining room...");
+      console.log("[Room] Socket connected, joining room...");
+      // Cancel any pending grace timer — reconnected in time
+      if (disconnectGraceTimer) {
+        clearTimeout(disconnectGraceTimer);
+        disconnectGraceTimer = null;
+      }
       setIsSocketDisconnected(false);
       joinRoom();
     };
 
     const onDisconnect = (reason: string) => {
-      console.log("Socket disconnected:", reason);
-      setIsSocketDisconnected(true);
+      console.log("[Room] Socket disconnected:", reason);
+      // For intentional client-side disconnects (e.g. page navigation), show immediately
+      if (reason === "io client disconnect") {
+        return; // We're leaving the page, no need for overlay
+      }
+      // For all other disconnects, wait 3 seconds before showing overlay
+      // This prevents flash during token refresh or brief network hiccups
+      if (disconnectGraceTimer) clearTimeout(disconnectGraceTimer);
+      disconnectGraceTimer = setTimeout(() => {
+        disconnectGraceTimer = null;
+        // Only show if still disconnected
+        if (!socket.connected) {
+          setIsSocketDisconnected(true);
+        }
+      }, 3000);
     };
 
     const onConnectError = (err: any) => {
-      console.error("Socket connection error:", err);
-      setIsSocketDisconnected(true);
+      console.warn("[Room] Socket connection error:", err.message);
+      // Don't set isSocketDisconnected here — socket.io will auto-retry
+      // and the disconnect handler's grace period covers real failures
     };
 
     socket.on("connect", onConnect);
@@ -273,6 +295,11 @@ export default function RoomPage() {
     });
 
     return () => {
+      // Clear grace timer on cleanup
+      if (disconnectGraceTimer) {
+        clearTimeout(disconnectGraceTimer);
+        disconnectGraceTimer = null;
+      }
       // Clean up socket connections and events
       socket.emit("leave_room", roomId);
       socket.off("connect", onConnect);

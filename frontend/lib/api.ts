@@ -94,14 +94,12 @@ const refreshAccessToken = async (): Promise<string> => {
   );
   applyAuthSession(data);
 
+  // Update socket auth token silently — do NOT disconnect/reconnect.
+  // Disconnecting the socket triggers the "Connection Interrupted" overlay
+  // in the room page, which is a false alarm during token refresh.
   if (typeof window !== "undefined") {
-    const { socket, reconnectSocketWithFreshToken, updateSocketAuth } =
-      await import("./socket");
-    if (socket.connected) {
-      reconnectSocketWithFreshToken();
-    } else {
-      updateSocketAuth();
-    }
+    const { updateSocketAuth } = await import("./socket");
+    updateSocketAuth();
   }
 
   return data.accessToken;

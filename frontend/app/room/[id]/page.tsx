@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion as m, AnimatePresence } from "framer-motion";
 import { Gamepad2, Trophy, ArrowLeft, Swords, Crown, User, RefreshCw, ShieldAlert, Send, RotateCcw, RotateCw } from "lucide-react";
@@ -194,6 +194,9 @@ export default function RoomPage() {
     card: any | null;
   }>({ type: null, card: null });
 
+  const [showExitModal, setShowExitModal] = useState(false);
+  const isLeavingRef = useRef(false);
+
   useEffect(() => {
     if (authLoading || !user) return;
 
@@ -316,8 +319,48 @@ export default function RoomPage() {
 
   const handleLeaveRoom = useCallback(() => {
     socket.emit("leave_room", roomId);
-    router.push("/");
+    router.replace("/");
   }, [roomId, router]);
+
+  const confirmLeave = useCallback(() => {
+    setShowExitModal(false);
+    isLeavingRef.current = true;
+    handleLeaveRoom();
+  }, [handleLeaveRoom]);
+
+  // Intercept accidental exit / reload / browser back button navigation during active match
+  useEffect(() => {
+    const isGameStarted = room?.gameStarted && room?.gameState;
+    if (!isGameStarted || matchResults) return;
+
+    // A. Intercept browser page refresh, tab closing, external URL navigation
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isLeavingRef.current) return;
+      e.preventDefault();
+      e.returnValue = "You are currently in an active match. Leaving now may affect gameplay.";
+      return e.returnValue;
+    };
+
+    // B. Intercept Next.js page back button and device/Android hardware back gesture
+    // We push a dummy state to history to absorb back-button transitions
+    window.history.pushState({ noBack: true }, "", window.location.href);
+
+    const handlePopState = (e: PopStateEvent) => {
+      if (isLeavingRef.current) return;
+      // Immediately restore dummy state to prevent router from popping current path
+      window.history.pushState({ noBack: true }, "", window.location.href);
+      // Open our modern exit confirmation modal
+      setShowExitModal(true);
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("popstate", handlePopState);
+    };
+  }, [room?.gameStarted, room?.gameState, matchResults]);
 
   const handleDisbandRoom = useCallback(() => {
     socket.emit("disband_room", roomId);
@@ -763,7 +806,7 @@ export default function RoomPage() {
             </div>
 
             <button
-              onClick={handleLeaveRoom}
+              onClick={() => setShowExitModal(true)}
               className="text-[0.65rem] font-black uppercase tracking-wider px-3 py-1.5 border border-card-red/20 bg-card-red/5 hover:bg-card-red/10 text-card-red rounded-lg transition-colors cursor-pointer"
             >
               Surrender
@@ -933,6 +976,42 @@ export default function RoomPage() {
           </div>
         </div>
       )}
+
+      {/* -------------------- CONFIRM EXIT MODAL -------------------- */}
+      <AnimatePresence>
+        {showExitModal && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-6">
+            <m.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-sm glass-panel rounded-2xl p-6 border border-white/10 text-center relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 right-0 h-1.5 bg-accent" />
+              <h3 className="text-xl font-black italic tracking-tighter uppercase text-white mb-2">
+                Leave Match?
+              </h3>
+              <p className="text-gray-400 text-sm leading-relaxed mb-6">
+                You are currently in an active match. Leaving now may affect gameplay.
+              </p>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setShowExitModal(false)}
+                  className="flex-1 py-3 bg-accent hover:bg-yellow-400 text-black font-black uppercase text-xs rounded-lg transition-colors cursor-pointer"
+                >
+                  Stay in Game
+                </button>
+                <button
+                  onClick={confirmLeave}
+                  className="flex-1 py-3 border border-card-red/20 bg-card-red/5 hover:bg-card-red/10 text-card-red font-black uppercase text-xs rounded-lg transition-colors cursor-pointer"
+                >
+                  Leave Match
+                </button>
+              </div>
+            </m.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* -------------------- RECONNECTING OVERLAY -------------------- */}
       <AnimatePresence>

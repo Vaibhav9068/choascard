@@ -195,6 +195,7 @@ export default function RoomPage() {
   }>({ type: null, card: null });
 
   const [showExitModal, setShowExitModal] = useState(false);
+  const [showDisbandModal, setShowDisbandModal] = useState(false);
   const isLeavingRef = useRef(false);
 
   useEffect(() => {
@@ -279,8 +280,8 @@ export default function RoomPage() {
     });
 
     socket.on("room_disbanded", () => {
-      alert("This arena has been disbanded by the host.");
-      router.push("/");
+      isLeavingRef.current = true;
+      setShowDisbandModal(true);
     });
 
     socket.on("error_message", (msg: string) => {
@@ -327,6 +328,11 @@ export default function RoomPage() {
     isLeavingRef.current = true;
     handleLeaveRoom();
   }, [handleLeaveRoom]);
+
+  const handleDisbandExit = useCallback(() => {
+    setShowDisbandModal(false);
+    router.replace("/");
+  }, [router]);
 
   // Intercept accidental exit / reload / browser back button navigation during active match
   useEffect(() => {
@@ -1008,6 +1014,34 @@ export default function RoomPage() {
                   Leave Match
                 </button>
               </div>
+            </m.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* -------------------- ROOM DISBANDED MODAL -------------------- */}
+      <AnimatePresence>
+        {showDisbandModal && (
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-6">
+            <m.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-sm glass-panel rounded-2xl p-6 border border-white/10 text-center relative overflow-hidden"
+            >
+              <div className="absolute top-0 left-0 right-0 h-1.5 bg-accent" />
+              <h3 className="text-xl font-black italic tracking-tighter uppercase text-white mb-2">
+                Arena Disbanded
+              </h3>
+              <p className="text-gray-400 text-sm leading-relaxed mb-6">
+                The room has been closed.
+              </p>
+              <button
+                onClick={handleDisbandExit}
+                className="w-full py-3 bg-accent hover:bg-yellow-400 text-black font-black uppercase text-xs rounded-lg transition-colors cursor-pointer"
+              >
+                Back to Lobby
+              </button>
             </m.div>
           </div>
         )}

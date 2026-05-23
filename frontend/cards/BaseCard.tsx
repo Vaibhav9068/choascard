@@ -54,7 +54,7 @@ export default function BaseCard({
       onClick={isPlayable ? onClick : undefined}
       className={cn(
         "relative flex flex-col justify-between overflow-hidden shrink-0",
-        "w-[120px] h-[180px] sm:w-[140px] sm:h-[210px]",
+        "w-[100px] h-[150px] sm:w-[110px] sm:h-[165px]",
         "rounded-[16px] border-[4px] cursor-default select-none",
         "transition-shadow duration-300",
         bgColors[colorTheme],

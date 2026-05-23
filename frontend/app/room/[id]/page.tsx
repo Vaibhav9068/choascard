@@ -38,49 +38,33 @@ interface MatchResult {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Opponent positioning around an elliptical table                    */
+/*  Circular table positioning (self = bottom center)                  */
+/*  Distributes opponents evenly along the top arc of an ellipse.      */
 /* ------------------------------------------------------------------ */
 const getOpponentPositions = (count: number) => {
-  // Positions along a top arc (self is always bottom center).
-  // Returns { top, left, translateX, translateY } for each opponent.
   const positions: { top: string; left: string; transform: string }[] = [];
-
-  if (count === 1) {
-    positions.push({ top: "4%", left: "50%", transform: "translateX(-50%)" });
-  } else if (count === 2) {
-    positions.push({ top: "4%", left: "30%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "70%", transform: "translateX(-50%)" });
-  } else if (count === 3) {
-    positions.push({ top: "18%", left: "8%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "50%", transform: "translateX(-50%)" });
-    positions.push({ top: "18%", left: "92%", transform: "translateX(-50%)" });
-  } else if (count === 4) {
-    positions.push({ top: "25%", left: "5%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "33%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "67%", transform: "translateX(-50%)" });
-    positions.push({ top: "25%", left: "95%", transform: "translateX(-50%)" });
-  } else if (count === 5) {
-    positions.push({ top: "30%", left: "4%", transform: "translateX(-50%)" });
-    positions.push({ top: "6%", left: "25%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "50%", transform: "translateX(-50%)" });
-    positions.push({ top: "6%", left: "75%", transform: "translateX(-50%)" });
-    positions.push({ top: "30%", left: "96%", transform: "translateX(-50%)" });
-  } else if (count === 6) {
-    positions.push({ top: "35%", left: "3%", transform: "translateX(-50%)" });
-    positions.push({ top: "12%", left: "18%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "40%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "60%", transform: "translateX(-50%)" });
-    positions.push({ top: "12%", left: "82%", transform: "translateX(-50%)" });
-    positions.push({ top: "35%", left: "97%", transform: "translateX(-50%)" });
-  } else {
-    // 7 opponents
-    positions.push({ top: "38%", left: "3%", transform: "translateX(-50%)" });
-    positions.push({ top: "15%", left: "14%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "32%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "50%", transform: "translateX(-50%)" });
-    positions.push({ top: "4%", left: "68%", transform: "translateX(-50%)" });
-    positions.push({ top: "15%", left: "86%", transform: "translateX(-50%)" });
-    positions.push({ top: "38%", left: "97%", transform: "translateX(-50%)" });
+  // Opponents are spread across the arc from ~210° to ~330° (bottom-excluded)
+  // Using ellipse: radiusX ~42%, radiusY ~38%, center at (50%, 48%)
+  const cx = 50;
+  const cy = 48;
+  const rx = 42;
+  const ry = 38;
+  // Spread opponents evenly across arc from π*7/6 (210°) around through 0° to π*11/6 (330°)
+  // This places them along the top and sides, avoiding the bottom where the self player sits
+  const startAngle = (210 * Math.PI) / 180;
+  const endAngle = (330 * Math.PI) / 180;
+  const totalArc = (360 - (330 - 210)) * (Math.PI / 180); // arc through top
+  for (let i = 0; i < count; i++) {
+    const fraction = count === 1 ? 0.5 : i / (count - 1);
+    // Interpolate from startAngle, going counter-clockwise through top
+    const angle = startAngle + fraction * totalArc;
+    const x = cx + rx * Math.cos(angle);
+    const y = cy - ry * Math.sin(angle);
+    positions.push({
+      top: `${Math.max(2, Math.min(55, y))}%`,
+      left: `${Math.max(3, Math.min(97, x))}%`,
+      transform: "translate(-50%, -50%)",
+    });
   }
   return positions;
 };
@@ -89,27 +73,34 @@ const getOpponentPositions = (count: number) => {
 /*  Opponent Card Stack (visual card backs)                           */
 /* ------------------------------------------------------------------ */
 const OpponentCardStack = React.memo(({ count }: { count: number }) => {
-  const visibleBacks = Math.min(count, 5);
+  const visibleBacks = Math.min(count, 4);
+  const isDanger = count <= 2 && count > 0;
   return (
-    <div className="relative flex items-center justify-center h-10 mt-1">
-      {Array.from({ length: visibleBacks }).map((_, i) => (
-        <div
-          key={i}
-          className="absolute w-7 h-10 rounded-md bg-surface border border-accent/30"
-          style={{
-            left: `${i * 5}px`,
-            zIndex: i,
-            transform: `rotate(${(i - Math.floor(visibleBacks / 2)) * 4}deg)`,
-          }}
-        >
-          <div className="w-full h-full rounded-md bg-gradient-to-br from-surface to-black flex items-center justify-center">
-            <div className="w-3 h-3 rounded-full border border-accent/40" />
+    <div className="flex flex-col items-center gap-1">
+      {/* Card back fans */}
+      <div className="relative h-9 flex items-center justify-center" style={{ width: `${24 + visibleBacks * 6}px` }}>
+        {Array.from({ length: visibleBacks }).map((_, i) => (
+          <div
+            key={i}
+            className="absolute w-6 h-9 rounded bg-surface border border-accent/25"
+            style={{
+              left: `${i * 6}px`,
+              zIndex: i,
+              transform: `rotate(${(i - (visibleBacks - 1) / 2) * 5}deg)`,
+            }}
+          >
+            <div className="w-full h-full rounded bg-gradient-to-br from-gray-800 to-black flex items-center justify-center">
+              <div className="w-2 h-2 rounded-full border border-accent/30" />
+            </div>
           </div>
-        </div>
-      ))}
-      <span className="absolute -right-6 top-1/2 -translate-y-1/2 text-[0.6rem] font-black text-white bg-black/60 border border-white/10 rounded-full w-5 h-5 flex items-center justify-center"
-        style={{ left: `${visibleBacks * 5 + 4}px` }}
-      >
+        ))}
+      </div>
+      {/* Count badge — large and prominent */}
+      <span className={`text-[0.7rem] font-black px-2 py-0.5 rounded-md border ${
+        isDanger
+          ? "text-card-red bg-card-red/10 border-card-red/30"
+          : "text-white bg-white/5 border-white/10"
+      }`}>
         {count}
       </span>
     </div>
@@ -135,13 +126,12 @@ const OpponentPanel = React.memo(({
 }) => {
   return (
     <m.div
-      layout
-      className={`absolute z-10 flex flex-col items-center p-2 rounded-xl border transition-colors duration-300 min-w-[90px] max-w-[110px] ${
+      className={`absolute z-10 flex flex-col items-center px-2.5 py-2 rounded-xl border-2 backdrop-blur-sm min-w-[80px] max-w-[100px] ${
         isDisconnected
-          ? "opacity-40 bg-black/40 border-dashed border-white/10"
+          ? "opacity-40 bg-black/50 border-dashed border-white/10"
           : isActive
-          ? "bg-accent/10 border-accent scale-[1.03]"
-          : "bg-black/40 border-white/5"
+          ? "bg-accent/15 border-accent shadow-[0_0_12px_rgba(250,229,0,0.15)]"
+          : "bg-black/50 border-white/[0.06]"
       }`}
       style={{
         top: position.top,
@@ -149,32 +139,33 @@ const OpponentPanel = React.memo(({
         transform: position.transform,
       }}
       animate={{
-        borderColor: isActive ? "rgba(250,229,0,0.6)" : "rgba(255,255,255,0.05)",
+        scale: isActive ? 1.05 : 1,
+        borderColor: isActive ? "rgba(250,229,0,0.7)" : isDisconnected ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.04)",
       }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.25 }}
     >
       {/* Username */}
-      <div className="flex items-center gap-1 mb-0.5">
+      <div className="flex items-center gap-1 mb-1">
         <div
-          className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.5rem] ${
+          className={`w-4 h-4 rounded-full flex items-center justify-center ${
             isDisconnected
               ? "bg-card-red/20 text-card-red"
               : isActive
-              ? "bg-accent/20 text-accent"
+              ? "bg-accent/30 text-accent"
               : "bg-white/5 text-gray-400"
           }`}
         >
-          <User className="w-3 h-3" />
+          <User className="w-2.5 h-2.5" />
         </div>
-        <span className="text-[0.65rem] font-bold truncate max-w-[70px]">
+        <span className={`text-[0.65rem] font-bold truncate max-w-[60px] ${isActive ? "text-accent" : ""}`}>
           {player.username}
         </span>
       </div>
 
       {/* Disconnected label */}
       {isDisconnected && (
-        <span className="text-[0.5rem] text-card-red font-black uppercase tracking-wider">
-          Reconnecting...
+        <span className="text-[0.5rem] text-card-red font-black uppercase tracking-wider mb-0.5">
+          Offline
         </span>
       )}
 
@@ -448,7 +439,7 @@ export default function RoomPage() {
   const state = room.gameState;
 
   return (
-    <div className="min-h-screen bg-game-bg text-white relative overflow-hidden flex flex-col">
+    <div className={`bg-game-bg text-white relative flex flex-col ${isGameStarted ? 'h-dvh overflow-hidden' : 'min-h-screen overflow-hidden'}`}>
       {/* Background patterns */}
       <div className="absolute inset-0 bg-[linear-gradient(to_right,#1f293708_1px,transparent_1px),linear-gradient(to_bottom,#1f293708_1px,transparent_1px)] bg-[size:4rem_4rem] pointer-events-none" />
       <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-accent/3 blur-[150px] pointer-events-none" />
@@ -699,7 +690,7 @@ export default function RoomPage() {
         </div>
       ) : (
         /* -------------------- 4. GAME SCREEN — TABLE LAYOUT -------------------- */
-        <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden">
           {/* Top Panel (Turn indicators + Direction + Stacking) */}
           <div className="relative z-20 border-b border-white/5 bg-black/60 backdrop-blur-sm px-4 sm:px-6 py-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -756,7 +747,18 @@ export default function RoomPage() {
           </AnimatePresence>
 
           {/* ---- TABLE AREA ---- */}
-          <div className="flex-1 relative overflow-hidden">
+          <div className="flex-1 relative overflow-hidden min-h-0">
+            {/* Subtle table ellipse ring */}
+            <div
+              className="absolute top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+              style={{
+                width: "78%",
+                height: "72%",
+                border: "1px solid rgba(255,255,255,0.03)",
+                borderRadius: "50%",
+                boxShadow: "inset 0 0 60px rgba(250,229,0,0.015)",
+              }}
+            />
             {/* Opponents positioned around the table */}
             {opponentData.map(({ player, cardCount, isActive, isDisconnected, position }) => (
               <OpponentPanel
@@ -770,7 +772,7 @@ export default function RoomPage() {
             ))}
 
             {/* Center Arena — Draw Pile + Discard Pile */}
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-8 sm:gap-12 z-10">
+            <div className="absolute top-[48%] left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-6 sm:gap-10 z-10 scale-[0.85] sm:scale-90">
               {/* Draw Pile Deck */}
               <div className="flex flex-col items-center">
                 <button
@@ -821,35 +823,28 @@ export default function RoomPage() {
               </div>
             </div>
 
-            {/* Self player indicator at bottom center (above hand) */}
-            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
+          </div>
+
+          {/* ---- PLAYER HAND AREA (fixed at bottom) ---- */}
+          <div className="relative z-20 border-t border-white/5 bg-black/70 backdrop-blur-md px-4 pt-2 pb-2 shrink-0">
+            {/* Self indicator + Action buttons row */}
+            <div className="flex justify-between items-center mb-1">
               <m.div
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold ${
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-[0.65rem] font-bold ${
                   room.players[state.turnIndex]?._id === user?._id
-                    ? "bg-accent/10 border-accent text-accent"
-                    : "bg-black/40 border-white/10 text-gray-400"
+                    ? "bg-accent/10 border border-accent/40 text-accent"
+                    : "bg-white/5 border border-white/5 text-gray-400"
                 }`}
                 animate={{
                   borderColor: room.players[state.turnIndex]?._id === user?._id
-                    ? "rgba(250,229,0,0.6)"
-                    : "rgba(255,255,255,0.1)",
+                    ? "rgba(250,229,0,0.5)" : "rgba(255,255,255,0.05)",
                 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: 0.25 }}
               >
                 <User className="w-3 h-3" />
                 <span>{user?.username}</span>
-                <span className="text-gray-500">
-                  ({state.hands[user._id]?.length || 0})
-                </span>
+                <span className="opacity-60">({state.hands[user._id]?.length || 0})</span>
               </m.div>
-            </div>
-          </div>
-
-          {/* ---- PLAYER HAND AREA ---- */}
-          <div className="relative z-20 border-t border-white/5 bg-black/60 backdrop-blur-sm px-4 py-3">
-            {/* Action buttons */}
-            <div className="flex justify-between items-center mb-2">
-              <h4 className="text-[0.65rem] font-black uppercase tracking-wider text-gray-500">Your Hand</h4>
 
               {room.players[state.turnIndex]._id === user?._id && (
                 <div className="flex gap-2">
@@ -871,9 +866,9 @@ export default function RoomPage() {
               )}
             </div>
 
-            {/* Player cards hand — horizontal scrollable with overlap */}
-            <div className="w-full overflow-x-auto py-2 px-1 flex items-center justify-center">
-              <div className="flex items-end" style={{ gap: state.hands[user._id]?.length > 8 ? "-20px" : "8px" }}>
+            {/* Player cards hand — constrained horizontal scroll */}
+            <div className="w-full overflow-x-auto py-1 flex items-center justify-center scrollbar-thin">
+              <div className="flex items-end" style={{ gap: state.hands[user._id]?.length > 7 ? "-24px" : state.hands[user._id]?.length > 5 ? "-12px" : "4px" }}>
                 {(!user || !state.hands[user._id] || state.hands[user._id].length === 0) ? (
                   <div className="text-gray-500 font-bold text-sm italic mx-auto">No cards left!</div>
                 ) : (

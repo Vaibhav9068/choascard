@@ -73,3 +73,18 @@ body {
   box-shadow: 0 0 10px rgba(250, 229, 0, 0.15);
   background: rgba(0, 0, 0, 0.6);
 }
+
+/* Thin scrollbar for player hand */
+.scrollbar-thin::-webkit-scrollbar {
+  height: 4px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

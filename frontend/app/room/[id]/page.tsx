@@ -866,9 +866,9 @@ export default function RoomPage() {
               )}
             </div>
 
-            {/* Player cards hand — constrained horizontal scroll */}
-            <div className="w-full overflow-x-auto py-1 flex items-center justify-center scrollbar-thin">
-              <div className="flex items-end" style={{ gap: state.hands[user._id]?.length > 7 ? "-24px" : state.hands[user._id]?.length > 5 ? "-12px" : "4px" }}>
+            {/* Player cards hand — full horizontal scroll */}
+            <div className="w-full overflow-x-auto py-1 scrollbar-thin">
+              <div className="flex items-end w-max mx-auto px-4" style={{ gap: state.hands[user._id]?.length > 7 ? "-24px" : state.hands[user._id]?.length > 5 ? "-12px" : "4px" }}>
                 {(!user || !state.hands[user._id] || state.hands[user._id].length === 0) ? (
                   <div className="text-gray-500 font-bold text-sm italic mx-auto">No cards left!</div>
                 ) : (

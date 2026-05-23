@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion as m, AnimatePresence } from "framer-motion";
-import { Gamepad2, Trophy, ArrowLeft, Swords, Crown, User, RefreshCw, Zap, ShieldAlert, Sparkles, Send } from "lucide-react";
+import { Gamepad2, Trophy, ArrowLeft, Swords, Crown, User, RefreshCw, ShieldAlert, Send, RotateCcw, RotateCw } from "lucide-react";
 import { useAuth } from "@/context/AuthProvider";
 import type { UserProfile } from "@/lib/api";
 import { socket, connectSocket } from "@/lib/socket";
@@ -37,6 +37,157 @@ interface MatchResult {
   trophyChange: number;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Opponent positioning around an elliptical table                    */
+/* ------------------------------------------------------------------ */
+const getOpponentPositions = (count: number) => {
+  // Positions along a top arc (self is always bottom center).
+  // Returns { top, left, translateX, translateY } for each opponent.
+  const positions: { top: string; left: string; transform: string }[] = [];
+
+  if (count === 1) {
+    positions.push({ top: "4%", left: "50%", transform: "translateX(-50%)" });
+  } else if (count === 2) {
+    positions.push({ top: "4%", left: "30%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "70%", transform: "translateX(-50%)" });
+  } else if (count === 3) {
+    positions.push({ top: "18%", left: "8%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "50%", transform: "translateX(-50%)" });
+    positions.push({ top: "18%", left: "92%", transform: "translateX(-50%)" });
+  } else if (count === 4) {
+    positions.push({ top: "25%", left: "5%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "33%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "67%", transform: "translateX(-50%)" });
+    positions.push({ top: "25%", left: "95%", transform: "translateX(-50%)" });
+  } else if (count === 5) {
+    positions.push({ top: "30%", left: "4%", transform: "translateX(-50%)" });
+    positions.push({ top: "6%", left: "25%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "50%", transform: "translateX(-50%)" });
+    positions.push({ top: "6%", left: "75%", transform: "translateX(-50%)" });
+    positions.push({ top: "30%", left: "96%", transform: "translateX(-50%)" });
+  } else if (count === 6) {
+    positions.push({ top: "35%", left: "3%", transform: "translateX(-50%)" });
+    positions.push({ top: "12%", left: "18%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "40%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "60%", transform: "translateX(-50%)" });
+    positions.push({ top: "12%", left: "82%", transform: "translateX(-50%)" });
+    positions.push({ top: "35%", left: "97%", transform: "translateX(-50%)" });
+  } else {
+    // 7 opponents
+    positions.push({ top: "38%", left: "3%", transform: "translateX(-50%)" });
+    positions.push({ top: "15%", left: "14%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "32%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "50%", transform: "translateX(-50%)" });
+    positions.push({ top: "4%", left: "68%", transform: "translateX(-50%)" });
+    positions.push({ top: "15%", left: "86%", transform: "translateX(-50%)" });
+    positions.push({ top: "38%", left: "97%", transform: "translateX(-50%)" });
+  }
+  return positions;
+};
+
+/* ------------------------------------------------------------------ */
+/*  Opponent Card Stack (visual card backs)                           */
+/* ------------------------------------------------------------------ */
+const OpponentCardStack = React.memo(({ count }: { count: number }) => {
+  const visibleBacks = Math.min(count, 5);
+  return (
+    <div className="relative flex items-center justify-center h-10 mt-1">
+      {Array.from({ length: visibleBacks }).map((_, i) => (
+        <div
+          key={i}
+          className="absolute w-7 h-10 rounded-md bg-surface border border-accent/30"
+          style={{
+            left: `${i * 5}px`,
+            zIndex: i,
+            transform: `rotate(${(i - Math.floor(visibleBacks / 2)) * 4}deg)`,
+          }}
+        >
+          <div className="w-full h-full rounded-md bg-gradient-to-br from-surface to-black flex items-center justify-center">
+            <div className="w-3 h-3 rounded-full border border-accent/40" />
+          </div>
+        </div>
+      ))}
+      <span className="absolute -right-6 top-1/2 -translate-y-1/2 text-[0.6rem] font-black text-white bg-black/60 border border-white/10 rounded-full w-5 h-5 flex items-center justify-center"
+        style={{ left: `${visibleBacks * 5 + 4}px` }}
+      >
+        {count}
+      </span>
+    </div>
+  );
+});
+OpponentCardStack.displayName = "OpponentCardStack";
+
+/* ------------------------------------------------------------------ */
+/*  Opponent Panel (positioned around table)                          */
+/* ------------------------------------------------------------------ */
+const OpponentPanel = React.memo(({
+  player,
+  cardCount,
+  isActive,
+  isDisconnected,
+  position,
+}: {
+  player: RoomPlayer;
+  cardCount: number;
+  isActive: boolean;
+  isDisconnected: boolean;
+  position: { top: string; left: string; transform: string };
+}) => {
+  return (
+    <m.div
+      layout
+      className={`absolute z-10 flex flex-col items-center p-2 rounded-xl border transition-colors duration-300 min-w-[90px] max-w-[110px] ${
+        isDisconnected
+          ? "opacity-40 bg-black/40 border-dashed border-white/10"
+          : isActive
+          ? "bg-accent/10 border-accent scale-[1.03]"
+          : "bg-black/40 border-white/5"
+      }`}
+      style={{
+        top: position.top,
+        left: position.left,
+        transform: position.transform,
+      }}
+      animate={{
+        borderColor: isActive ? "rgba(250,229,0,0.6)" : "rgba(255,255,255,0.05)",
+      }}
+      transition={{ duration: 0.3 }}
+    >
+      {/* Username */}
+      <div className="flex items-center gap-1 mb-0.5">
+        <div
+          className={`w-5 h-5 rounded-full flex items-center justify-center text-[0.5rem] ${
+            isDisconnected
+              ? "bg-card-red/20 text-card-red"
+              : isActive
+              ? "bg-accent/20 text-accent"
+              : "bg-white/5 text-gray-400"
+          }`}
+        >
+          <User className="w-3 h-3" />
+        </div>
+        <span className="text-[0.65rem] font-bold truncate max-w-[70px]">
+          {player.username}
+        </span>
+      </div>
+
+      {/* Disconnected label */}
+      {isDisconnected && (
+        <span className="text-[0.5rem] text-card-red font-black uppercase tracking-wider">
+          Reconnecting...
+        </span>
+      )}
+
+      {/* Card stack */}
+      <OpponentCardStack count={cardCount} />
+    </m.div>
+  );
+});
+OpponentPanel.displayName = "OpponentPanel";
+
+/* ================================================================== */
+/*  MAIN ROOM PAGE COMPONENT                                          */
+/* ================================================================== */
 export default function RoomPage() {
   const params = useParams();
   const router = useRouter();
@@ -144,25 +295,25 @@ export default function RoomPage() {
     };
   }, [roomId, router, user, authLoading]);
 
-  const handleStartGame = () => {
+  const handleStartGame = useCallback(() => {
     socket.emit("start_game", roomId);
-  };
+  }, [roomId]);
 
-  const handleLeaveRoom = () => {
+  const handleLeaveRoom = useCallback(() => {
     socket.emit("leave_room", roomId);
     router.push("/");
-  };
+  }, [roomId, router]);
 
-  const handleDisbandRoom = () => {
+  const handleDisbandRoom = useCallback(() => {
     socket.emit("disband_room", roomId);
-  };
+  }, [roomId]);
 
-  const handlePlayAgain = () => {
+  const handlePlayAgain = useCallback(() => {
     socket.emit("play_again", roomId);
-  };
+  }, [roomId]);
 
   // Card click handler
-  const handleCardClick = (card: any) => {
+  const handleCardClick = useCallback((card: any) => {
     if (!room?.gameState) return;
     const state = room.gameState;
     const isOurTurn = room.players[state.turnIndex]._id === user?._id;
@@ -172,8 +323,8 @@ export default function RoomPage() {
       return;
     }
 
-    // Check if card requires a target (Slam, Couple)
-    const requiresTarget = ["Slam", "Couple"].includes(card.value);
+    // Check if card requires a target (Slam only — Couple removed)
+    const requiresTarget = ["Slam"].includes(card.value);
     // Check if card requires color selection (Wild, Super)
     const requiresColor = ["Wild", "Super"].includes(card.type) || card.color === "Any";
 
@@ -190,9 +341,9 @@ export default function RoomPage() {
         payload: { card }
       });
     }
-  };
+  }, [room, user, roomId]);
 
-  const submitPlayWithPayload = (selectedColor?: string, targetId?: string) => {
+  const submitPlayWithPayload = useCallback((selectedColor?: string, targetId?: string) => {
     if (!overlay.card) return;
     socket.emit("player_action", {
       roomId,
@@ -204,9 +355,9 @@ export default function RoomPage() {
       }
     });
     setOverlay({ type: null, card: null });
-  };
+  }, [overlay.card, roomId]);
 
-  const handleDrawCard = () => {
+  const handleDrawCard = useCallback(() => {
     if (!room?.gameState) return;
     const state = room.gameState;
     const isOurTurn = room.players[state.turnIndex]._id === user?._id;
@@ -216,9 +367,9 @@ export default function RoomPage() {
       roomId,
       action: "draw_card"
     });
-  };
+  }, [room, user, roomId]);
 
-  const handlePassTurn = () => {
+  const handlePassTurn = useCallback(() => {
     if (!room?.gameState) return;
     const state = room.gameState;
     const isOurTurn = room.players[state.turnIndex]._id === user?._id;
@@ -228,7 +379,58 @@ export default function RoomPage() {
       roomId,
       action: "pass_turn"
     });
-  };
+  }, [room, user, roomId]);
+
+  // Render proper game card component helper
+  const renderGameCard = useCallback((card: any, index: number, isPlayable: boolean) => {
+    const key = card.id || index;
+    const onClick = () => handleCardClick(card);
+    
+    if (card.type === "Number") {
+      return <NumberCard key={key} value={card.value} colorTheme={card.color.toLowerCase() as any} isPlayable={isPlayable} onClick={onClick} />;
+    } else if (card.type === "Action") {
+      return <ActionCard key={key} value={card.value} colorTheme={card.color.toLowerCase() as any} isPlayable={isPlayable} onClick={onClick} />;
+    } else if (card.type === "Wild") {
+      return <WildCard key={key} value={card.value} isPlayable={isPlayable} onClick={onClick} />;
+    } else if (card.type === "Super") {
+      return <SuperCard key={key} value={card.value} isPlayable={isPlayable} onClick={onClick} />;
+    }
+    return <CardBack key={key} />;
+  }, [handleCardClick]);
+
+  // Check if a card is playable in the current hand
+  const isCardPlayable = useCallback((card: any) => {
+    if (!room?.gameState || !room?.gameStarted || !user) return false;
+    const state = room.gameState;
+    const activePlayer = room.players[state.turnIndex];
+    if (activePlayer._id !== user._id) return false;
+
+    const levels: Record<string, number> = { "+2": 2, "+4": 4, "+6": 6, "+10": 10, "PunchBack": 99 };
+    const topCard = state.discardPile[state.discardPile.length - 1];
+
+    if (state.stackingCards > 0) {
+      const cardLevel = levels[card.value];
+      if (!cardLevel) return false;
+      const requiredLevel = levels[topCard.value] || 0;
+      return cardLevel >= requiredLevel;
+    }
+
+    return (card.color === "Any" || card.color === state.activeColor || card.value === topCard.value);
+  }, [room, user]);
+
+  // Memoize opponent data
+  const opponentData = useMemo(() => {
+    if (!room?.gameState || !user) return [];
+    const opponents = room.players.filter(p => p._id !== user._id);
+    const positions = getOpponentPositions(opponents.length);
+    return opponents.map((player, i) => ({
+      player,
+      cardCount: room.gameState.hands[player._id]?.length || 0,
+      isActive: room.players[room.gameState.turnIndex]._id === player._id,
+      isDisconnected: player.connected === false,
+      position: positions[i],
+    }));
+  }, [room, user]);
 
   if (loading || authLoading || !user || !room) {
     return (
@@ -245,42 +447,6 @@ export default function RoomPage() {
   const isGameStarted = room.gameStarted && room.gameState;
   const state = room.gameState;
 
-  // Render proper game card component helper
-  const renderGameCard = (card: any, index: number, isPlayable: boolean) => {
-    const key = card.id || index;
-    const onClick = () => handleCardClick(card);
-    
-    if (card.type === "Number") {
-      return <NumberCard key={key} value={card.value} colorTheme={card.color.toLowerCase() as any} isPlayable={isPlayable} onClick={onClick} />;
-    } else if (card.type === "Action") {
-      return <ActionCard key={key} value={card.value} colorTheme={card.color.toLowerCase() as any} isPlayable={isPlayable} onClick={onClick} />;
-    } else if (card.type === "Wild") {
-      return <WildCard key={key} value={card.value} isPlayable={isPlayable} onClick={onClick} />;
-    } else if (card.type === "Super") {
-      return <SuperCard key={key} value={card.value} isPlayable={isPlayable} onClick={onClick} />;
-    }
-    return <CardBack key={key} />;
-  };
-
-  // Check if a card is playable in the current hand
-  const isCardPlayable = (card: any) => {
-    if (!isGameStarted || !user) return false;
-    const activePlayer = room.players[state.turnIndex];
-    if (activePlayer._id !== user._id) return false;
-
-    const levels: Record<string, number> = { "+2": 2, "+4": 4, "+6": 6, "+10": 10, "PunchBack": 99 };
-    const topCard = state.discardPile[state.discardPile.length - 1];
-
-    if (state.stackingCards > 0) {
-      const cardLevel = levels[card.value];
-      if (!cardLevel) return false;
-      const requiredLevel = levels[topCard.value] || 0;
-      return cardLevel >= requiredLevel;
-    }
-
-    return (card.color === "Any" || card.color === state.activeColor || card.value === topCard.value);
-  };
-
   return (
     <div className="min-h-screen bg-game-bg text-white relative overflow-hidden flex flex-col">
       {/* Background patterns */}
@@ -288,11 +454,18 @@ export default function RoomPage() {
       <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] rounded-full bg-accent/3 blur-[150px] pointer-events-none" />
 
       {/* Floating Error Toast */}
-      {error && (
-        <div className="fixed top-6 right-6 z-50 p-4 rounded-lg bg-card-red/10 border border-card-red/30 text-card-red text-sm font-bold glow-red/10 animate-bounce">
-          {error}
-        </div>
-      )}
+      <AnimatePresence>
+        {error && (
+          <m.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-6 right-6 z-50 p-4 rounded-lg bg-card-red/10 border border-card-red/30 text-card-red text-sm font-bold"
+          >
+            {error}
+          </m.div>
+        )}
+      </AnimatePresence>
 
       {/* -------------------- 1. RESULTS SCREEN -------------------- */}
       {matchResults && (
@@ -525,172 +698,204 @@ export default function RoomPage() {
           </main>
         </div>
       ) : (
-        /* -------------------- 4. GAME SCREEN -------------------- */
+        /* -------------------- 4. GAME SCREEN — TABLE LAYOUT -------------------- */
         <div className="flex-1 flex flex-col h-screen overflow-hidden">
-          {/* Top Panel (Turn indicators + Stacking states) */}
-          <div className="relative z-10 border-b border-white/5 bg-black/40 px-6 py-3 flex items-center justify-between">
+          {/* Top Panel (Turn indicators + Direction + Stacking) */}
+          <div className="relative z-20 border-b border-white/5 bg-black/60 backdrop-blur-sm px-4 sm:px-6 py-2.5 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-gray-400 uppercase">Arena Code:</span>
-              <span className="text-accent font-black tracking-widest text-sm">{roomId}</span>
+              <span className="text-[0.65rem] font-bold text-gray-400 uppercase hidden sm:inline">Arena:</span>
+              <span className="text-accent font-black tracking-widest text-xs">{roomId}</span>
             </div>
 
-            {/* active turn display */}
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-accent animate-ping" />
-              <span className="font-bold text-xs uppercase tracking-wider text-gray-300">
-                Turn: <span className="text-accent font-black">{room.players[state.turnIndex].username}</span>
-              </span>
+            {/* Turn + Direction indicator */}
+            <div className="flex items-center gap-3">
+              {/* Direction */}
+              <m.div
+                key={state.direction}
+                initial={{ rotate: state.direction === 1 ? -180 : 180 }}
+                animate={{ rotate: 0 }}
+                transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                className="text-accent"
+              >
+                {state.direction === 1 ? (
+                  <RotateCw className="w-4 h-4" />
+                ) : (
+                  <RotateCcw className="w-4 h-4" />
+                )}
+              </m.div>
+
+              <div className="flex items-center gap-1.5">
+                <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                <span className="font-bold text-xs uppercase tracking-wider text-gray-300">
+                  <span className="text-accent font-black">{room.players[state.turnIndex]?.username}</span>
+                </span>
+              </div>
             </div>
 
             <button
               onClick={handleLeaveRoom}
-              className="text-xs font-black uppercase tracking-wider px-3 py-1.5 border border-card-red/20 bg-card-red/5 hover:bg-card-red/10 text-card-red rounded-lg transition-colors cursor-pointer"
+              className="text-[0.65rem] font-black uppercase tracking-wider px-3 py-1.5 border border-card-red/20 bg-card-red/5 hover:bg-card-red/10 text-card-red rounded-lg transition-colors cursor-pointer"
             >
               Surrender
             </button>
           </div>
 
           {/* Stacking Penalty Alert Banner */}
-          {state.stackingCards > 0 && (
-            <div className="relative z-10 bg-card-red text-black font-black uppercase text-xs py-2 text-center flex items-center justify-center gap-2 glow-red/20">
-              <ShieldAlert className="w-4 h-4 stroke-[3]" />
-              <span>Stack Active! Next player must drop counter or draw {state.stackingCards} cards!</span>
-            </div>
-          )}
+          <AnimatePresence>
+            {state.stackingCards > 0 && (
+              <m.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="relative z-10 bg-card-red text-black font-black uppercase text-xs py-2 text-center flex items-center justify-center gap-2 overflow-hidden"
+              >
+                <ShieldAlert className="w-4 h-4 stroke-[3]" />
+                <span>Stack Active! Draw {state.stackingCards} cards or play a counter!</span>
+              </m.div>
+            )}
+          </AnimatePresence>
 
-          {/* Game board layout */}
-          <div className="flex-1 flex flex-col md:flex-row relative">
-            
-            {/* Left side board: Opponent hand sizes */}
-            <div className="w-full md:w-64 bg-black/15 border-r border-white/5 p-4 overflow-y-auto space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-gray-500 mb-3">Opponents</h3>
-              {room.players
-                .filter((p) => p._id !== user?._id)
-                .map((player) => {
-                  const playerHandCount = state.hands[player._id]?.length || 0;
-                  const isPlayerTurn = room.players[state.turnIndex]._id === player._id;
-                  const isDisconnected = player.connected === false;
-                  
-                  return (
-                    <div
-                      key={player._id}
-                      className={`p-3 rounded-xl border transition-all flex items-center justify-between ${
-                        isDisconnected ? "opacity-40 bg-black/40 border-dashed border-white/10" :
-                        isPlayerTurn ? "bg-accent/15 border-accent text-accent glow-accent/5" : "bg-black/25 border-white/5"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 truncate">
-                        <div className={`w-7 h-7 rounded-full flex items-center justify-center ${isDisconnected ? "bg-card-red/10 text-card-red" : "bg-white/5 text-gray-400"}`}>
-                          <User className="w-3.5 h-3.5" />
-                        </div>
-                        <div className="truncate text-xs font-bold">
-                          {player.username}
-                          {isDisconnected && <span className="block text-[0.6rem] text-card-red font-black uppercase tracking-wider">RECONNECTING...</span>}
-                        </div>
-                      </div>
-                      <span className="text-xs font-black px-2 py-0.5 bg-white/5 border border-white/10 rounded-full text-white">
-                        {playerHandCount} Cards
-                      </span>
-                    </div>
-                  );
-                })}
-              
-              {/* Couple status linking indicator */}
-              {state.coupleLink && (
-                <div className="p-3 bg-pink-500/10 border border-pink-500/30 text-pink-400 rounded-xl mt-4">
-                  <div className="text-xs font-black uppercase tracking-widest flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Couple Active
-                  </div>
-                  <p className="text-[0.65rem] text-gray-400 mt-1 leading-relaxed">
-                    Attack mirror replication active. Ends in {state.coupleLink.roundsLeft} turns.
-                  </p>
-                </div>
-              )}
-            </div>
+          {/* ---- TABLE AREA ---- */}
+          <div className="flex-1 relative overflow-hidden">
+            {/* Opponents positioned around the table */}
+            {opponentData.map(({ player, cardCount, isActive, isDisconnected, position }) => (
+              <OpponentPanel
+                key={player._id}
+                player={player}
+                cardCount={cardCount}
+                isActive={isActive}
+                isDisconnected={isDisconnected}
+                position={position}
+              />
+            ))}
 
-            {/* Right side board: Discard & Draw Deck area */}
-            <div className="flex-1 min-w-0 flex flex-col justify-between p-6">
-              
-              {/* Center Arena table */}
-              <div className="flex-1 flex items-center justify-center gap-12 relative">
-                {/* Draw Pile Deck */}
-                <div className="flex flex-col items-center">
-                  <button
-                    onClick={handleDrawCard}
-                    disabled={room.players[state.turnIndex]._id !== user?._id}
-                    className="cursor-pointer hover:scale-105 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed group relative"
-                  >
-                    {/* Shadow cards */}
-                    <div className="absolute inset-0 bg-black/50 translate-x-1.5 translate-y-1.5 rounded-[16px] pointer-events-none" />
-                    <CardBack />
-                  </button>
-                  <span className="text-[0.65rem] font-bold text-gray-500 uppercase tracking-widest mt-2">
-                    Draw Pile ({state.deckCount})
-                  </span>
-                </div>
+            {/* Center Arena — Draw Pile + Discard Pile */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-8 sm:gap-12 z-10">
+              {/* Draw Pile Deck */}
+              <div className="flex flex-col items-center">
+                <button
+                  onClick={handleDrawCard}
+                  disabled={room.players[state.turnIndex]._id !== user?._id}
+                  className="cursor-pointer hover:scale-105 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed relative"
+                >
+                  {/* Shadow cards */}
+                  <div className="absolute inset-0 bg-black/50 translate-x-1.5 translate-y-1.5 rounded-[16px] pointer-events-none" />
+                  <CardBack />
+                </button>
+                <span className="text-[0.6rem] font-bold text-gray-500 uppercase tracking-widest mt-2">
+                  Draw ({state.deckCount})
+                </span>
+              </div>
 
-                {/* Discard Pile Face-Up */}
-                <div className="flex flex-col items-center">
-                  <div className={`relative p-1 rounded-[20px] transition-shadow duration-300 ${
+              {/* Discard Pile Face-Up */}
+              <div className="flex flex-col items-center">
+                <m.div
+                  layout
+                  className={`relative p-1 rounded-[20px] transition-shadow duration-300 ${
                     state.activeColor === "Red" ? "shadow-[0_0_20px_rgba(255,51,102,0.4)]" :
                     state.activeColor === "Blue" ? "shadow-[0_0_20px_rgba(51,153,255,0.4)]" :
                     state.activeColor === "Green" ? "shadow-[0_0_20px_rgba(0,255,136,0.4)]" :
                     state.activeColor === "Yellow" ? "shadow-[0_0_20px_rgba(255,204,0,0.4)]" : ""
-                  }`}>
-                    {renderGameCard(state.discardPile[state.discardPile.length - 1], 9999, false)}
-                  </div>
-                  <span className={`text-[0.65rem] font-black uppercase tracking-widest mt-2 px-2 py-0.5 rounded border ${
-                    state.activeColor === "Red" ? "text-card-red border-card-red/20 bg-card-red/5" :
-                    state.activeColor === "Blue" ? "text-card-blue border-card-blue/20 bg-card-blue/5" :
-                    state.activeColor === "Green" ? "text-card-green border-card-green/20 bg-card-green/5" :
-                    state.activeColor === "Yellow" ? "text-card-yellow border-card-yellow/20 bg-card-yellow/5" : ""
-                  }`}>
-                    Color: {state.activeColor}
-                  </span>
-                </div>
+                  }`}
+                >
+                  <AnimatePresence mode="popLayout">
+                    <m.div
+                      key={state.discardPile[state.discardPile.length - 1]?.id || "discard"}
+                      initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
+                      animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                      exit={{ scale: 0.8, opacity: 0 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                    >
+                      {renderGameCard(state.discardPile[state.discardPile.length - 1], 9999, false)}
+                    </m.div>
+                  </AnimatePresence>
+                </m.div>
+                <span className={`text-[0.6rem] font-black uppercase tracking-widest mt-2 px-2 py-0.5 rounded border ${
+                  state.activeColor === "Red" ? "text-card-red border-card-red/20 bg-card-red/5" :
+                  state.activeColor === "Blue" ? "text-card-blue border-card-blue/20 bg-card-blue/5" :
+                  state.activeColor === "Green" ? "text-card-green border-card-green/20 bg-card-green/5" :
+                  state.activeColor === "Yellow" ? "text-card-yellow border-card-yellow/20 bg-card-yellow/5" : ""
+                }`}>
+                  {state.activeColor}
+                </span>
               </div>
-
-              {/* Player hand area container */}
-              <div className="w-full border-t border-white/5 pt-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-xs font-black uppercase tracking-wider text-gray-500">Your Hand</h4>
-                  
-                  {room.players[state.turnIndex]._id === user?._id && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleDrawCard}
-                        disabled={state.hasDrawn}
-                        className="px-3.5 py-1.5 bg-accent hover:bg-yellow-400 disabled:opacity-40 text-black font-black uppercase text-[0.65rem] rounded-lg tracking-wider transition-colors cursor-pointer"
-                      >
-                        Draw Card
-                      </button>
-                      <button
-                        onClick={handlePassTurn}
-                        disabled={!state.hasDrawn}
-                        className="px-3.5 py-1.5 border border-white/10 hover:border-white/20 disabled:opacity-40 text-white font-black uppercase text-[0.65rem] rounded-lg tracking-wider transition-colors cursor-pointer"
-                      >
-                        Pass Turn
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Player cards hand */}
-                <div className="w-full overflow-x-auto py-4 px-2 flex items-center justify-start gap-4">
-                  {(!user || !state.hands[user._id] || state.hands[user._id].length === 0) ? (
-                    <div className="text-gray-500 font-bold text-sm italic mx-auto">No cards left!</div>
-                  ) : (
-                    state.hands[user._id].map((card: any, idx: number) => {
-                      const playable = isCardPlayable(card);
-                      return renderGameCard(card, idx, playable);
-                    })
-                  )}
-                </div>
-              </div>
-
             </div>
 
+            {/* Self player indicator at bottom center (above hand) */}
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-10">
+              <m.div
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold ${
+                  room.players[state.turnIndex]?._id === user?._id
+                    ? "bg-accent/10 border-accent text-accent"
+                    : "bg-black/40 border-white/10 text-gray-400"
+                }`}
+                animate={{
+                  borderColor: room.players[state.turnIndex]?._id === user?._id
+                    ? "rgba(250,229,0,0.6)"
+                    : "rgba(255,255,255,0.1)",
+                }}
+                transition={{ duration: 0.3 }}
+              >
+                <User className="w-3 h-3" />
+                <span>{user?.username}</span>
+                <span className="text-gray-500">
+                  ({state.hands[user._id]?.length || 0})
+                </span>
+              </m.div>
+            </div>
+          </div>
+
+          {/* ---- PLAYER HAND AREA ---- */}
+          <div className="relative z-20 border-t border-white/5 bg-black/60 backdrop-blur-sm px-4 py-3">
+            {/* Action buttons */}
+            <div className="flex justify-between items-center mb-2">
+              <h4 className="text-[0.65rem] font-black uppercase tracking-wider text-gray-500">Your Hand</h4>
+
+              {room.players[state.turnIndex]._id === user?._id && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleDrawCard}
+                    disabled={state.hasDrawn}
+                    className="px-3 py-1.5 bg-accent hover:bg-yellow-400 disabled:opacity-40 text-black font-black uppercase text-[0.6rem] rounded-lg tracking-wider transition-colors cursor-pointer"
+                  >
+                    Draw
+                  </button>
+                  <button
+                    onClick={handlePassTurn}
+                    disabled={!state.hasDrawn}
+                    className="px-3 py-1.5 border border-white/10 hover:border-white/20 disabled:opacity-40 text-white font-black uppercase text-[0.6rem] rounded-lg tracking-wider transition-colors cursor-pointer"
+                  >
+                    Pass
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Player cards hand — horizontal scrollable with overlap */}
+            <div className="w-full overflow-x-auto py-2 px-1 flex items-center justify-center">
+              <div className="flex items-end" style={{ gap: state.hands[user._id]?.length > 8 ? "-20px" : "8px" }}>
+                {(!user || !state.hands[user._id] || state.hands[user._id].length === 0) ? (
+                  <div className="text-gray-500 font-bold text-sm italic mx-auto">No cards left!</div>
+                ) : (
+                  state.hands[user._id].map((card: any, idx: number) => {
+                    const playable = isCardPlayable(card);
+                    return (
+                      <m.div
+                        key={card.id || idx}
+                        layout
+                        initial={{ scale: 0.5, y: 50, opacity: 0 }}
+                        animate={{ scale: 1, y: 0, opacity: 1 }}
+                        exit={{ scale: 0.5, y: -100, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 25, delay: idx * 0.02 }}
+                        style={{ zIndex: idx }}
+                      >
+                        {renderGameCard(card, idx, playable)}
+                      </m.div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -706,7 +911,7 @@ export default function RoomPage() {
               className="w-full max-w-sm glass-panel rounded-2xl p-8 border border-white/10 text-center relative overflow-hidden"
             >
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-card-red animate-pulse" />
-              <div className="w-16 h-16 bg-card-red/10 border border-card-red/20 rounded-full flex items-center justify-center mx-auto mb-6 glow-red/5">
+              <div className="w-16 h-16 bg-card-red/10 border border-card-red/20 rounded-full flex items-center justify-center mx-auto mb-6">
                 <RefreshCw className="w-8 h-8 text-card-red animate-spin" />
               </div>
               <h3 className="text-xl font-black italic tracking-tighter uppercase text-white mb-2">

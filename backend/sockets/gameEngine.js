@@ -32,7 +32,6 @@ const buildDeck = () => {
     deck.push({ id: `Super-+10-${i}`, type: 'Super', color: 'Any', value: '+10' });
     deck.push({ id: `Super-PunchBack-${i}`, type: 'Super', color: 'Any', value: 'PunchBack' });
     deck.push({ id: `Super-Slam-${i}`, type: 'Super', color: 'Any', value: 'Slam' });
-    deck.push({ id: `Super-Couple-${i}`, type: 'Super', color: 'Any', value: 'Couple' });
   }
 
   // Shuffle
@@ -47,7 +46,7 @@ const checkDeck = (state) => {
   }
 };
 
-// Authoritative Helper to draw cards for a player and replicate if Coupled
+// Authoritative Helper to draw cards for a player
 const drawCardsForPlayer = (state, playerId, count, isAttackDraw = false) => {
   const drawn = [];
   for (let i = 0; i < count; i++) {
@@ -60,17 +59,6 @@ const drawCardsForPlayer = (state, playerId, count, isAttackDraw = false) => {
     }
   }
 
-  // Replicate +attacks for Couple Link
-  if (isAttackDraw && state.coupleLink && !state.inCoupleReplication) {
-    state.inCoupleReplication = true; // prevent infinite loops
-    const { p1, p2 } = state.coupleLink;
-    if (playerId === p1) {
-      drawCardsForPlayer(state, p2, count, true);
-    } else if (playerId === p2) {
-      drawCardsForPlayer(state, p1, count, true);
-    }
-    state.inCoupleReplication = false;
-  }
 
   return drawn;
 };
@@ -140,7 +128,6 @@ const handleGameEvents = (io, socket, rooms) => {
         direction: 1, // 1 for clockwise, -1 for counter-clockwise
         activeColor: topCard.color,
         stackingCards: 0, // accumulated penalty cards
-        coupleLink: null, // { p1: id, p2: id, roundsLeft: 2 }
         hasDrawn: false,
         winner: null
       };
@@ -232,16 +219,6 @@ const handleGameEvents = (io, socket, rooms) => {
           drawCardsForPlayer(state, targetId, 3, true);
         }
 
-        // Couple effect: link two players
-        if (card.value === 'Couple' && targetId) {
-          if (!state.coupleLink) {
-            state.coupleLink = {
-              p1: currentPlayer._id,
-              p2: targetId,
-              roundsLeft: 2 * room.players.length // exactly 2 full rounds
-            };
-          }
-        }
 
         // Win Condition check
         if (playerHand.length === 0) {
@@ -319,13 +296,6 @@ const nextTurn = (room) => {
   while (true) {
     state.turnIndex = (state.turnIndex + state.direction + room.players.length) % room.players.length;
     
-    // Decrement rounds left on couple linking
-    if (state.coupleLink) {
-      state.coupleLink.roundsLeft--;
-      if (state.coupleLink.roundsLeft <= 0) {
-        state.coupleLink = null;
-      }
-    }
 
     // Auto-resolve stacking penalty if active player cannot defend
     if (state.stackingCards > 0) {
@@ -395,11 +365,6 @@ const handlePlayerForfeit = async (io, rooms, roomId, userId) => {
       broadcastGameState(io, room);
       await handleMatchEnd(room, io);
       return;
-    }
-
-    // 4. If the forfeiting player was linked in a Couple, clear the couple link
-    if (state.coupleLink && (state.coupleLink.p1 === userId || state.coupleLink.p2 === userId)) {
-      state.coupleLink = null;
     }
 
     // 5. Adjust turn index

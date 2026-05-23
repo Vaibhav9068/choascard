@@ -1,9 +1,9 @@
 
 import BaseCard, { type BaseCardProps } from './BaseCard';
-import { FaFistRaised, FaBomb, FaHeartBroken } from 'react-icons/fa';
+import { FaFistRaised, FaBomb } from 'react-icons/fa';
 
 export interface SuperCardProps extends BaseCardProps {
-  value: '+6' | '+10' | 'PunchBack' | 'Slam' | 'Couple';
+  value: '+6' | '+10' | 'PunchBack' | 'Slam';
 }
 
 export default function SuperCard({ value, ...props }: SuperCardProps) {
@@ -38,13 +38,7 @@ export default function SuperCard({ value, ...props }: SuperCardProps) {
           subtitle: 'TARGET +3',
           icon: <FaBomb size={28} className="text-black" />
         };
-      case 'Couple':
-        return {
-          bg: 'bg-gradient-to-br from-pink-600 to-purple-900',
-          title: 'COUPLE',
-          subtitle: 'SOUL LINK',
-          icon: <FaHeartBroken size={28} className="text-black" />
-        };
+
       default:
         return { bg: 'bg-black', title: '?', subtitle: '', icon: null };
     }
